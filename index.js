@@ -18,82 +18,11 @@
  * Or search "UPS Monitor" in the Homebridge UI plugin store.
  */
 
-const net = require('net');
+const { queryNUT }        = require('./lib/nutClient');
+const { parseStatusFlags } = require('./lib/nutParser');
 
-const PLUGIN_NAME  = 'homebridge-ups-monitor';
+const PLUGIN_NAME   = 'homebridge-ups-monitor';
 const PLATFORM_NAME = 'NUTDashboard';
-
-// NUT variables we request on every poll
-const NUT_VARS = [
-  'ups.status',
-  'input.voltage',
-  'output.voltage',
-  'battery.charge',
-  'ups.load',
-  'battery.runtime',   // seconds
-  'battery.voltage',
-  'ups.model',
-  'ups.mfr',
-];
-
-// ─── NUT TCP client ───────────────────────────────────────────────────────────
-/**
- * Open a single TCP connection to upsd, send all GET VAR commands followed by
- * LOGOUT, collect the responses, then return a plain object keyed by variable
- * name.  Numeric values are coerced to numbers; string values stay as strings.
- *
- * @param {string}      host
- * @param {number}      port
- * @param {string}      upsName   e.g. 'ups'
- * @param {string|null} username
- * @param {string|null} password
- * @returns {Promise<Object>}
- */
-function queryNUT(host, port, upsName, username, password) {
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection({ port: port || 3493, host: host || '127.0.0.1' });
-    socket.setTimeout(8000);
-
-    let buffer = '';
-
-    // Build the command list; auth lines only if credentials are provided
-    const cmds = [];
-    if (username) cmds.push(`USERNAME ${username}`);
-    if (password) cmds.push(`PASSWORD ${password}`);
-    NUT_VARS.forEach(v => cmds.push(`GET VAR ${upsName} ${v}`));
-    cmds.push('LOGOUT');
-
-    socket.on('connect', () => {
-      socket.write(cmds.join('\n') + '\n');
-    });
-
-    socket.on('data', chunk => {
-      buffer += chunk.toString();
-    });
-
-    // Parse VAR lines out of the accumulated buffer
-    const parse = () => {
-      const result = {};
-      for (const line of buffer.split('\n')) {
-        // NUT response format:  VAR <ups> <variable> "<value>"
-        const m = line.match(/^VAR \S+ (\S+) "(.*)"/);
-        if (m) {
-          const raw = m[2];
-          result[m[1]] = (raw !== '' && !isNaN(raw)) ? parseFloat(raw) : raw;
-        }
-      }
-      resolve(result);
-    };
-
-    socket.on('end',   parse);
-    socket.on('close', parse);
-    socket.on('error', err => reject(err));
-    socket.on('timeout', () => {
-      socket.destroy();
-      reject(new Error('NUT connection timed out'));
-    });
-  });
-}
 
 // ─── Homebridge entry point ───────────────────────────────────────────────────
 module.exports = (api) => {
@@ -103,9 +32,9 @@ module.exports = (api) => {
 // ─── Platform ─────────────────────────────────────────────────────────────────
 class NUTDashboardPlatform {
   constructor(log, config, api) {
-    this.log  = log;
+    this.log    = log;
     this.config = config;
-    this.api  = api;
+    this.api    = api;
 
     // Map of UUID → cached platformAccessory (restored by Homebridge on restart)
     this.cachedAccessories = new Map();
@@ -125,7 +54,10 @@ class NUTDashboardPlatform {
     // Low battery threshold
     this.lowBatThreshold = config.lowBatteryThreshold || 20;
 
-    this.log.info(`NUT UPS Dashboard starting — server: ${this.host}:${this.port}, UPS: [${this.upsList.join(', ')}]`);
+    this.log.info(
+      `NUT UPS Monitor starting — server: ${this.host}:${this.port}, ` +
+      `UPS: [${this.upsList.join(', ')}]`
+    );
 
     this.api.on('didFinishLaunching', () => this.initAccessories());
   }
@@ -176,9 +108,10 @@ class NUTDashboardPlatform {
 
     const poll = async () => {
       try {
-        const data = await queryNUT(this.host, this.port, upsName, this.username, this.password);
+        const data  = await queryNUT(this.host, this.port, upsName, this.username, this.password);
+        const flags = parseStatusFlags(data['ups.status']);
 
-        // ── Battery Level ──────────────────────────────────────────────────────
+        // ── Battery Level ────────────────────────────────────────────────────
         const charge = data['battery.charge'];
         if (charge !== undefined) {
           batterySvc.updateCharacteristic(
@@ -193,29 +126,24 @@ class NUTDashboardPlatform {
           );
         }
 
-        // ── UPS Status string (e.g. "OL", "OB DISCHRG", "LB") ─────────────────
-        const status   = String(data['ups.status'] || '');
-        const onLine   = status.includes('OL');   // connected to mains
-        const onBatt   = status.includes('OB');   // running on battery
-        const charging = onLine && !status.includes('DISCHRG');
-
+        // ── Charging state ───────────────────────────────────────────────────
         batterySvc.updateCharacteristic(
           Characteristic.ChargingState,
-          charging
+          flags.charging
             ? Characteristic.ChargingState.CHARGING
             : Characteristic.ChargingState.NOT_CHARGING
         );
 
-        // ── Outlet ─────────────────────────────────────────────────────────────
-        // "On" means the UPS is actively supplying power (either from mains or battery)
-        outletSvc.updateCharacteristic(Characteristic.On, onLine || onBatt);
+        // ── Outlet ───────────────────────────────────────────────────────────
+        outletSvc.updateCharacteristic(Characteristic.On, flags.onLine || flags.onBattery);
         const load = data['ups.load'];
         outletSvc.updateCharacteristic(Characteristic.OutletInUse, (load || 0) > 0);
 
         this.log.debug(
-          `[${upsName}] status=${status} | ` +
-          `input=${data['input.voltage']}V | output=${data['output.voltage']}V | ` +
-          `battery=${charge}% | load=${load}% | runtime=${Math.round((data['battery.runtime'] || 0) / 60)}min`
+          `[${upsName}] ${flags.raw} | ` +
+          `in=${data['input.voltage']}V out=${data['output.voltage']}V | ` +
+          `bat=${charge}% load=${load}% ` +
+          `runtime=${Math.round((data['battery.runtime'] || 0) / 60)}min`
         );
       } catch (err) {
         this.log.error(`[${upsName}] NUT query failed: ${err.message}`);

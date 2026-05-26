@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Homebridge platform plugin — monitors UPS via NUT (Network UPS Tools) with live voltage, battery, load and runtime dashboard",
   "main": "index.js",
+  "scripts": {
+    "test": "jest --forceExit --detectOpenHandles",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage --forceExit"
+  },
   "author": {
     "name": "GodIsI",
     "url": "https://github.com/GodIsI"
@@ -37,8 +42,21 @@
   "dependencies": {
     "@homebridge/plugin-ui-utils": ">=0.0.0"
   },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
   "peerDependencies": {
     "homebridge": "^1.6.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "lib/**/*.js",
+      "index.js"
+    ]
   },
   "homebridge": {
     "displayName": "UPS Monitor (NUT)",
