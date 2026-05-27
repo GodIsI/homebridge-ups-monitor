@@ -7,7 +7,10 @@
 
 set -euo pipefail
 
-PLUGIN_DIR="$HOME/.homebridge/node_modules/homebridge-ups-monitor"
+# Homebridge stores plugins under /var/lib/homebridge when run via hb-service
+PLUGIN_DIR="/var/lib/homebridge/node_modules/homebridge-ups-monitor"
+# Fall back to ~/.homebridge if the above doesn't exist
+[ -d "/var/lib/homebridge/node_modules" ] || PLUGIN_DIR="$HOME/.homebridge/node_modules/homebridge-ups-monitor"
 REPO="GodIsI/homebridge-ups-monitor"
 CHANNEL="stable"
 
@@ -64,6 +67,11 @@ tar -xzf "$TMP/plugin.tgz" -C "$TMP"
 rm -rf "$PLUGIN_DIR"
 mkdir -p "$PLUGIN_DIR"
 cp -r "$TMP/package/." "$PLUGIN_DIR/"
+
+# Install the UI dependency so server.js can find @homebridge/plugin-ui-utils
+echo "Installing UI dependencies..."
+cd "$PLUGIN_DIR"
+npm install @homebridge/plugin-ui-utils --no-save --silent
 
 echo ""
 echo "✓ Installed $TAG to $PLUGIN_DIR"
