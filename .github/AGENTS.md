@@ -1,0 +1,131 @@
+# Agent Conventions — homebridge-ups-monitor
+
+This file is the authoritative guide for AI agents (GitHub Copilot, Claude, etc.) working on this repository. Read it before touching any code.
+
+---
+
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable, production-ready. Every merge triggers a GitHub Release + tarball. |
+| `develop` | Integration branch. All features and fixes land here first. |
+| `agent/<slug>` | Agent-generated work. Branch from `develop`, PR back to `develop`. |
+| `feature/<slug>` | Human-initiated features. Same rules as `agent/`. |
+
+**Never open a PR directly to `main`.** `main` is fed only from `develop` when a release is cut.
+
+---
+
+## Starting a New Task
+
+```bash
+git fetch origin
+git status                         # must be clean
+git log --oneline origin/develop -5
+git checkout -b agent/<slug> origin/develop
+```
+
+Replace `<slug>` with a short, kebab-case description of the work (e.g., `agent/homekit-tiles`, `agent/ring-buffer-history`).
+
+---
+
+## Before Committing
+
+1. Run tests: `npm test`
+2. Confirm the test suite is green.
+3. Keep commits atomic — one logical change per commit.
+4. Use conventional commit messages:
+   - `feat:` new behaviour
+   - `fix:` bug fix
+   - `test:` test-only changes
+   - `refactor:` no behaviour change
+   - `docs:` documentation only
+   - `chore:` build / tooling
+
+---
+
+## Pull Requests
+
+- PR target is **always `develop`**, never `main`.
+- Title: `feat: <short description>` (or `fix:`, `refactor:`, etc.)
+- Description must include:
+  - What changed and why
+  - How to test it manually (e.g., Homebridge restart + HomeKit check)
+  - Any config.schema.json changes that affect existing users
+
+---
+
+## Project-Specific Context
+
+### Plugin architecture
+
+```
+index.js                       Platform entry — registers NUTDashboard, orchestrates tiles + poll loop
+lib/nutClient.js               Pure TCP NUT client. queryNUT() → Promise<Object>
+lib/nutParser.js               parseStatusFlags(str) → {onLine, onBattery, charging, lowBattery, raw}
+lib/tiles/batteryTile.js       Battery service (charge %, charging state, low-battery alert)
+lib/tiles/outletTile.js        Outlet service (On, OutletInUse)
+lib/tiles/onBatteryTile.js     OccupancySensor tile (on-battery alert)
+lib/tiles/loadTile.js          Lightbulb tile (Brightness = load %)
+lib/tiles/inputVoltageTile.js  LightSensor tile — input voltage
+lib/tiles/outputVoltageTile.js LightSensor tile — output voltage
+lib/tiles/runtimeTile.js       TemperatureSensor tile — runtime in minutes
+homebridge-ui/server.js        UI server — POST /ups-status, POST /history (planned)
+homebridge-ui/public/          Dashboard HTML/JS/CSS
+config.schema.json             Homebridge config UI schema
+```
+
+Each tile module exports a single function:
+```js
+setup(accessory, api, upsName, opts) → { update(data, flags) }
+```
+`setup()` registers or recovers the HAP service; `update()` is called on every successful poll.
+
+### NUT variable names used
+
+| NUT variable | Meaning |
+|---|---|
+| `ups.status` | Space-separated flags: OL, OB, CHRG, LB, etc. |
+| `battery.charge` | Battery % (0–100) |
+| `battery.runtime` | Remaining runtime in **seconds** |
+| `ups.load` | Load % (0–100) |
+| `input.voltage` | AC input voltage |
+| `output.voltage` | AC output voltage |
+
+### HomeKit service conventions
+
+Use `accessory.getService(Service.X) || accessory.addService(Service.X, displayName)` — never `.addService()` unconditionally (causes duplicate service errors on restart).
+
+Services per accessory (one module each in `lib/tiles/`):
+- `Battery` — charge, charging state, low battery alert
+- `Outlet` — On (UPS providing power), OutletInUse (load > 0)
+- `OccupancySensor` — OccupancyDetected = 1 when on-battery
+- `Lightbulb` — Brightness = `ups.load` % (0–100)
+- `LightSensor` (subtype `input-voltage`) — `input.voltage` as CurrentAmbientLightLevel
+- `LightSensor` (subtype `output-voltage`) — `output.voltage` as CurrentAmbientLightLevel
+- `TemperatureSensor` — `battery.runtime ÷ 60` minutes as CurrentTemperature
+
+See [FEATURES.md](FEATURES.md) for design rationale and the full roadmap.
+
+### Installation path on Raspberry Pi
+
+Homebridge (hb-service) installs plugins to:
+```
+/var/lib/homebridge/node_modules/homebridge-ups-monitor/
+```
+Not the npm global prefix. The `scripts/deploy.sh` script handles this correctly.
+
+### Config platform name
+
+`"platform": "NUTDashboard"` — must match `PLATFORM_NAME` in `index.js` and `pluginAlias` in `config.schema.json`.
+
+---
+
+## What Agents Must Not Do
+
+- Do not merge to `main` directly.
+- Do not modify `.github/workflows/` without a discussion comment in the PR.
+- Do not add npm production dependencies without justification (plugin size matters).
+- Do not use `accessory.addService()` without first checking `accessory.getService()`.
+- Do not hardcode the Homebridge storage path — always use `this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || path.join(os.homedir(), '.homebridge')`.
