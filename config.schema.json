@@ -1,0 +1,76 @@
+{
+  "pluginAlias": "NUTDashboard",
+  "pluginType": "platform",
+  "singular": false,
+  "customUi": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "default": "NUT UPS Dashboard",
+        "required": true
+      },
+      "host": {
+        "title": "NUT Server Host",
+        "type": "string",
+        "default": "127.0.0.1",
+        "description": "Hostname or IP of the machine running upsd. Use 127.0.0.1 if NUT is on the same Pi."
+      },
+      "port": {
+        "title": "NUT Server Port",
+        "type": "integer",
+        "default": 3493,
+        "description": "TCP port upsd listens on (default 3493)."
+      },
+      "username": {
+        "title": "NUT Username",
+        "type": "string",
+        "description": "Leave blank if upsmon.conf does not require authentication."
+      },
+      "password": {
+        "title": "NUT Password",
+        "type": "string",
+        "description": "Leave blank if upsmon.conf does not require authentication."
+      },
+      "ups": {
+        "title": "UPS Name(s)",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": ["ups"],
+        "description": "One or more UPS names as reported by 'upsc -l'. Typically just ['ups']."
+      },
+      "pollInterval": {
+        "title": "Poll Interval (seconds)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 5,
+        "description": "How often to query NUT for fresh data."
+      },
+      "lowBatteryThreshold": {
+        "title": "Low Battery Threshold (%)",
+        "type": "integer",
+        "default": 20,
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Battery percentage below which the Low Battery alert triggers in HomeKit."
+      }
+    }
+  },
+  "layout": [
+    { "key": "name" },
+    {
+      "type": "fieldset",
+      "title": "NUT Connection",
+      "items": ["host", "port", "username", "password"]
+    },
+    {
+      "type": "fieldset",
+      "title": "UPS Settings",
+      "items": ["ups", "pollInterval", "lowBatteryThreshold"]
+    }
+  ]
+}

@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NUT UPS Dashboard</title>
+
+  <!-- Chart.js for voltage/battery history sparklines -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1a1d27;
+      --surface2:    #242838;
+      --border:      #2e3347;
+      --text:        #e2e8f0;
+      --text-dim:    #7a8399;
+      --green:       #22c55e;
+      --yellow:      #eab308;
+      --red:         #ef4444;
+      --blue:        #3b82f6;
+      --purple:      #a855f7;
+      --orange:      #f97316;
+      --radius:      10px;
+      --shadow:      0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .refresh-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+    .refresh-btn:hover { background: var(--border); }
+    .last-updated {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* ── Status banner ───────────────────────────────────────────────────── */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 18px;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      border: 1px solid transparent;
+      font-weight: 600;
+      font-size: 15px;
+      transition: all 0.3s;
+    }
+    .status-banner.online  { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.3);  color: var(--green);  }
+    .status-banner.battery { background: rgba(234,179,8,0.12);  border-color: rgba(234,179,8,0.3);  color: var(--yellow); }
+    .status-banner.error   { background: rgba(239,68,68,0.12);  border-color: rgba(239,68,68,0.3);  color: var(--red);    }
+    .status-banner.loading { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: var(--text-dim); }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-banner.online  .status-dot { background: var(--green);  box-shadow: 0 0 8px var(--green); }
+    .status-banner.battery .status-dot { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .status-banner.error   .status-dot { background: var(--red);    box-shadow: 0 0 8px var(--red); }
+    .status-banner.loading .status-dot { background: var(--text-dim); }
+
+    .status-detail {
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-dim);
+      margin-left: auto;
+    }
+
+    /* ── Metrics grid ────────────────────────────────────────────────────── */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      transition: border-color 0.2s;
+    }
+    .metric-card:hover { border-color: var(--surface2); }
+
+    .metric-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .metric-icon { font-size: 13px; }
+
+    .metric-value {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .metric-unit {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-dim);
+      margin-left: 3px;
+    }
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    /* Colour classes applied to metric-value based on thresholds */
+    .val-green  { color: var(--green);  }
+    .val-yellow { color: var(--yellow); }
+    .val-red    { color: var(--red);    }
+    .val-blue   { color: var(--blue);   }
+    .val-purple { color: var(--purple); }
+    .val-orange { color: var(--orange); }
+    .val-normal { color: var(--text);   }
+
+    /* Battery bar */
+    .battery-bar-wrap {
+      margin-top: 8px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .battery-bar {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+
+    /* ── Chart section ───────────────────────────────────────────────────── */
+    .chart-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    .chart-section h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 14px;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 160px;
+    }
+
+    /* ── Error / no data ─────────────────────────────────────────────────── */
+    .error-msg {
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.25);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      color: var(--red);
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Multi-UPS tabs ──────────────────────────────────────────────────── */
+    .ups-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .ups-tab {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .ups-tab.active {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    /* ── Countdown ring ──────────────────────────────────────────────────── */
+    .countdown {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .countdown-bar {
+      width: 60px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .countdown-fill {
+      height: 100%;
+      background: var(--blue);
+      border-radius: 2px;
+      transition: width 1s linear;
+    }
+
+    /* Skeleton loader */
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position:  400px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 4px;
+      color: transparent;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div class="header">
+  <h1>⚡ UPS Dashboard</h1>
+  <div class="header-meta">
+    <div class="countdown">
+      <span id="countdown-label">–</span>
+      <div class="countdown-bar"><div class="countdown-fill" id="countdown-fill" style="width:100%"></div></div>
+    </div>
+    <button class="refresh-btn" onclick="fetchData()">↻ Refresh</button>
+  </div>
+</div>
+
+<!-- ── Error area ───────────────────────────────────────────────────────────── -->
+<div id="error-area" style="display:none" class="error-msg"></div>
+
+<!-- ── Multi-UPS selector (hidden when only one UPS) ────────────────────────── -->
+<div id="ups-tabs" class="ups-tabs" style="display:none"></div>
+
+<!-- ── Status banner ────────────────────────────────────────────────────────── -->
+<div id="status-banner" class="status-banner loading">
+  <div class="status-dot"></div>
+  <span id="status-text">Connecting to NUT…</span>
+  <span class="status-detail" id="status-detail"></span>
+</div>
+
+<!-- ── Metrics ──────────────────────────────────────────────────────────────── -->
+<div class="metrics-grid">
+  <!-- Input Voltage -->
+  <div class="metric-card">
+    <div class="metric-label"><span class="metric-icon">↘</span> Input Voltage</div>
+    <div class="metric-value val-normal" id="m-input-v">–<span class="metric-unit">V</span></div>
+    <div class="metric-sub" id="m-input-v-nom"></div>
+  </div>
+
+  <!-- Output Voltage -->
+  <div class="metric-card">
+    <div class="metric-label"><span class="metric-icon">↗</span> Output Voltage</div>
+    <div class="metric-value val-normal" id="m-output-v">–<span class="metric-unit">V</span></div>
+    <div class="metric-sub" id="m-output-v-nom"></div>
+  </div>
+
+  <!-- Battery Charge -->
+  <div class="metric-card">
+    <div class="metric-label"><span class="metric-icon">🔋</span> Battery</div>
+    <div class="metric-value val-normal" id="m-battery">–<span class="metric-unit">%</span></div>
+    <div class="battery-bar-wrap">
+      <div class="battery-bar" id="battery-bar" style="width:0%;background:var(--green)"></div>
+    </div>
+    <div class="metric-sub" id="m-battery-sub"></div>
+  </div>
+
+  <!-- Load -->
+  <div class="metric-card">
+    <div class="metric-label"><span class="metric-icon">📊</span> Load</div>
+    <div class="metric-value val-normal" id="m-load">–<span class="metric-unit">%</span></div>
+    <div class="metric-sub" id="m-load-sub"></div>
+  </div>
+
+  <!-- Runtime -->
+  <div class="metric-card">
+    <div class="metric-label"><span class="metric-icon">⏱</span> Runtime</div>
+    <div class="metric-value val-normal" id="m-runtime">–</div>
+    <div class="metric-sub" id="m-runtime-sub">on battery</div>
+  </div>
+
+  <!-- Battery Voltage -->
+  <div class="metric-card">
+    <div class="metric-label"><span class="metric-icon">⚡</span> Battery Voltage</div>
+    <div class="metric-value val-normal" id="m-batt-v">–<span class="metric-unit">V</span></div>
+    <div class="metric-sub" id="m-batt-v-nom"></div>
+  </div>
+</div>
+
+<!-- ── Voltage history chart ─────────────────────────────────────────────────── -->
+<div class="chart-section">
+  <h2>Voltage History (last 20 readings)</h2>
+  <div class="chart-wrap">
+    <canvas id="voltage-chart"></canvas>
+  </div>
+</div>
+
+<!-- ── Battery history chart ─────────────────────────────────────────────────── -->
+<div class="chart-section">
+  <h2>Battery &amp; Load History</h2>
+  <div class="chart-wrap">
+    <canvas id="battery-chart"></canvas>
+  </div>
+</div>
+
+<div class="last-updated" id="last-updated" style="text-align:right;color:var(--text-dim);font-size:11px;"></div>
+
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────────
+const REFRESH_INTERVAL_S = 15;  // seconds between auto-refreshes
+const HISTORY_KEY        = 'nut-dashboard-history-v2';
+const MAX_HISTORY        = 20;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let allUPSData    = [];   // most recent response array
+let activeUPSIdx  = 0;   // which UPS is displayed
+let history       = loadHistory();
+let countdownVal  = REFRESH_INTERVAL_S;
+let countdownTimer;
+let voltageChart, batteryChart;
+
+// ── History persistence ───────────────────────────────────────────────────────
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '{}');
+  } catch { return {}; }
+}
+function saveHistory() {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+}
+function pushHistory(upsName, point) {
+  if (!history[upsName]) history[upsName] = [];
+  history[upsName].push(point);
+  if (history[upsName].length > MAX_HISTORY) history[upsName].shift();
+  saveHistory();
+}
+
+// ── NUT status → human label & banner class ───────────────────────────────────
+function parseStatus(statusStr) {
+  if (!statusStr) return { label: 'Unknown', cls: 'error', detail: '' };
+  const s = String(statusStr).trim().toUpperCase();
+  if (s.includes('OL') && !s.includes('OB')) {
+    const extra = s.includes('CHRG')  ? ' — Charging'
+                : s.includes('DISCHRG') ? ' — Discharging'
+                : '';
+    return { label: 'Online' + extra, cls: 'online', detail: s };
+  }
+  if (s.includes('OB')) {
+    return { label: 'On Battery', cls: 'battery', detail: s };
+  }
+  if (s.includes('LB')) {
+    return { label: '⚠ Low Battery', cls: 'error', detail: s };
+  }
+  return { label: s, cls: 'loading', detail: '' };
+}
+
+// ── Colour helpers ────────────────────────────────────────────────────────────
+function voltageClass(v, nominal) {
+  if (v === null || v === undefined) return 'val-normal';
+  const ref = nominal || 230;
+  const pct = Math.abs(v - ref) / ref * 100;
+  if (pct <= 5)  return 'val-green';
+  if (pct <= 10) return 'val-yellow';
+  return 'val-red';
+}
+function batteryClass(pct) {
+  if (pct >= 50) return 'val-green';
+  if (pct >= 20) return 'val-yellow';
+  return 'val-red';
+}
+function loadClass(pct) {
+  if (pct <= 50) return 'val-green';
+  if (pct <= 80) return 'val-yellow';
+  return 'val-red';
+}
+function batteryBarColor(pct) {
+  if (pct >= 50) return 'var(--green)';
+  if (pct >= 20) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+// ── Format runtime (seconds → "Xh Ym" or "Ym") ───────────────────────────────
+function fmtRuntime(seconds) {
+  if (seconds === null || seconds === undefined || isNaN(seconds)) return '–';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+// ── Update DOM with UPS data ──────────────────────────────────────────────────
+function renderUPS(ups) {
+  if (!ups) return;
+
+  // Status banner
+  const { label, cls, detail } = parseStatus(ups['ups.status']);
+  const banner = document.getElementById('status-banner');
+  banner.className = `status-banner ${cls}`;
+  document.getElementById('status-text').textContent =
+    `${ups._upsName?.toUpperCase() || 'UPS'} — ${label}` +
+    (ups['ups.mfr'] || ups['ups.model'] ? ` (${[ups['ups.mfr'], ups['ups.model']].filter(Boolean).join(' ')})` : '');
+  document.getElementById('status-detail').textContent = detail;
+
+  // ── Voltages ──────────────────────────────────────────────────────────────
+  const inV    = ups['input.voltage'];
+  const inVnom = ups['input.voltage.nominal'];
+  const outV   = ups['output.voltage'];
+  const outVnom= ups['output.voltage.nominal'];
+
+  setMetric('m-input-v',  inV,  'V', voltageClass(inV, inVnom),
+            inVnom ? `Nominal ${inVnom}V` : '');
+  setMetric('m-output-v', outV, 'V', voltageClass(outV, outVnom),
+            outVnom ? `Nominal ${outVnom}V` : '');
+
+  // ── Battery ───────────────────────────────────────────────────────────────
+  const charge = ups['battery.charge'];
+  const lowThr = ups['battery.charge.low'] || 20;
+  setMetric('m-battery', charge, '%', batteryClass(charge),
+            charge !== undefined ? `Low threshold: ${lowThr}%` : '');
+
+  if (charge !== undefined) {
+    const bar = document.getElementById('battery-bar');
+    bar.style.width = `${Math.min(100, Math.max(0, charge))}%`;
+    bar.style.background = batteryBarColor(charge);
+  }
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+  const load = ups['ups.load'];
+  const power = ups['ups.realpower'] || ups['ups.power'];
+  setMetric('m-load', load, '%', loadClass(load),
+            power ? `~${Math.round(power)} W` : '');
+
+  // ── Runtime ───────────────────────────────────────────────────────────────
+  const runtimeSec = ups['battery.runtime'];
+  const rEl = document.getElementById('m-runtime');
+  rEl.innerHTML = fmtRuntime(runtimeSec);
+  rEl.className = 'metric-value ' + (runtimeSec < 300 ? 'val-red' : runtimeSec < 600 ? 'val-yellow' : 'val-green');
+
+  // ── Battery voltage ───────────────────────────────────────────────────────
+  const bv    = ups['battery.voltage'];
+  const bvnom = ups['battery.voltage.nominal'];
+  setMetric('m-batt-v', bv, 'V', 'val-purple',
+            bvnom ? `Nominal ${bvnom}V` : '');
+}
+
+function setMetric(id, value, unit, colorClass, subText) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (value === undefined || value === null) {
+    el.innerHTML = `–<span class="metric-unit">${unit}</span>`;
+    el.className = 'metric-value val-normal';
+  } else {
+    const displayVal = Number.isInteger(value) ? value : value.toFixed(1);
+    el.innerHTML = `${displayVal}<span class="metric-unit">${unit}</span>`;
+    el.className = `metric-value ${colorClass}`;
+  }
+  // sub-text element (id with -nom or -sub suffix)
+  const sub = document.getElementById(id + '-nom') || document.getElementById(id + '-sub');
+  if (sub && subText !== undefined) sub.textContent = subText;
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: { legend: { labels: { color: '#7a8399', font: { size: 11 }, boxWidth: 10 } } },
+  scales: {
+    x: { ticks: { color: '#7a8399', font: { size: 10 }, maxTicksLimit: 8 },
+         grid:  { color: 'rgba(255,255,255,0.04)' } },
+    y: { ticks: { color: '#7a8399', font: { size: 10 } },
+         grid:  { color: 'rgba(255,255,255,0.06)' } },
+  },
+  elements: { point: { radius: 2, hoverRadius: 4 }, line: { tension: 0.35 } },
+  animation: { duration: 300 },
+};
+
+function initCharts() {
+  const vCtx = document.getElementById('voltage-chart').getContext('2d');
+  voltageChart = new Chart(vCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Input V',  data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true },
+        { label: 'Output V', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)',  fill: true },
+      ],
+    },
+    options: { ...CHART_DEFAULTS,
+      scales: { ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y,
+          title: { display: true, text: 'Voltage (V)', color: '#7a8399', font: { size: 10 } } } } },
+  });
+
+  const bCtx = document.getElementById('battery-chart').getContext('2d');
+  batteryChart = new Chart(bCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Battery %', data: [], borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.08)', fill: true, yAxisID: 'y' },
+        { label: 'Load %',    data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)',  fill: true, yAxisID: 'y' },
+      ],
+    },
+    options: { ...CHART_DEFAULTS,
+      scales: { ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y, min: 0, max: 100,
+          title: { display: true, text: '%', color: '#7a8399', font: { size: 10 } } } } },
+  });
+}
+
+function updateCharts(upsName) {
+  const pts = (history[upsName] || []);
+  if (!pts.length) return;
+
+  const labels   = pts.map(p => p.t);
+  voltageChart.data.labels         = labels;
+  voltageChart.data.datasets[0].data = pts.map(p => p.inV);
+  voltageChart.data.datasets[1].data = pts.map(p => p.outV);
+  voltageChart.update();
+
+  batteryChart.data.labels             = labels;
+  batteryChart.data.datasets[0].data   = pts.map(p => p.bat);
+  batteryChart.data.datasets[1].data   = pts.map(p => p.load);
+  batteryChart.update();
+}
+
+// ── Multi-UPS tabs ────────────────────────────────────────────────────────────
+function renderTabs(dataArr) {
+  const tabsEl = document.getElementById('ups-tabs');
+  if (dataArr.length <= 1) { tabsEl.style.display = 'none'; return; }
+  tabsEl.style.display = 'flex';
+  tabsEl.innerHTML = '';
+  dataArr.forEach((ups, i) => {
+    const btn = document.createElement('button');
+    btn.className = `ups-tab${i === activeUPSIdx ? ' active' : ''}`;
+    btn.textContent = ups._upsName || `UPS ${i + 1}`;
+    btn.onclick = () => {
+      activeUPSIdx = i;
+      renderTabs(allUPSData);
+      renderUPS(allUPSData[i]);
+      updateCharts(allUPSData[i]._upsName);
+    };
+    tabsEl.appendChild(btn);
+  });
+}
+
+// ── Main fetch ────────────────────────────────────────────────────────────────
+async function fetchData() {
+  const errEl = document.getElementById('error-area');
+  errEl.style.display = 'none';
+
+  try {
+    const resp = await homebridge.request('/ups-status');
+
+    if (!resp.success) {
+      throw new Error(resp.error || 'Server returned an error');
+    }
+
+    allUPSData = resp.data || [];
+
+    // Record history point for each UPS
+    const now = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    for (const ups of allUPSData) {
+      if (!ups._error) {
+        pushHistory(ups._upsName, {
+          t:    now,
+          inV:  ups['input.voltage']  ?? null,
+          outV: ups['output.voltage'] ?? null,
+          bat:  ups['battery.charge'] ?? null,
+          load: ups['ups.load']       ?? null,
+        });
+      }
+    }
+
+    renderTabs(allUPSData);
+    if (allUPSData[activeUPSIdx]) {
+      const ups = allUPSData[activeUPSIdx];
+      if (ups._error) {
+        showError(`NUT error for ${ups._upsName}: ${ups._error}`);
+      } else {
+        renderUPS(ups);
+        updateCharts(ups._upsName);
+      }
+    }
+
+    document.getElementById('last-updated').textContent =
+      `Last updated: ${new Date().toLocaleTimeString()} — NUT at ${resp.host}:${resp.port}`;
+
+  } catch (err) {
+    showError('Could not reach NUT server: ' + err.message);
+    document.getElementById('status-banner').className = 'status-banner error';
+    document.getElementById('status-text').textContent = 'Connection failed';
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-area');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+
+// ── Countdown timer ───────────────────────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownVal = REFRESH_INTERVAL_S;
+
+  countdownTimer = setInterval(() => {
+    countdownVal--;
+    const fill  = document.getElementById('countdown-fill');
+    const label = document.getElementById('countdown-label');
+    if (fill)  fill.style.width = `${(countdownVal / REFRESH_INTERVAL_S) * 100}%`;
+    if (label) label.textContent = `${countdownVal}s`;
+
+    if (countdownVal <= 0) {
+      fetchData();
+      countdownVal = REFRESH_INTERVAL_S;
+    }
+  }, 1000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+(async () => {
+  initCharts();
+
+  // Pre-populate charts from stored history (first UPS we find in history)
+  const firstKey = Object.keys(history)[0];
+  if (firstKey) updateCharts(firstKey);
+
+  await fetchData();
+  startCountdown();
+})();
+</script>
+</body>
+</html>

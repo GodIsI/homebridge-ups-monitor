@@ -1,0 +1,66 @@
+{
+  "name": "homebridge-ups-monitor",
+  "version": "1.0.0",
+  "description": "Homebridge platform plugin — monitors UPS via NUT (Network UPS Tools) with live voltage, battery, load and runtime dashboard",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --forceExit --detectOpenHandles",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage --forceExit"
+  },
+  "author": {
+    "name": "GodIsI",
+    "url": "https://github.com/GodIsI"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GodIsI/homebridge-ups-monitor.git"
+  },
+  "homepage": "https://github.com/GodIsI/homebridge-ups-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/GodIsI/homebridge-ups-monitor/issues"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge",
+    "nut",
+    "ups",
+    "power",
+    "battery",
+    "voltage",
+    "network-ups-tools",
+    "uninterruptible-power-supply",
+    "energy-monitor",
+    "solar",
+    "raspberry-pi"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "homebridge": ">=1.6.0"
+  },
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": ">=0.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "peerDependencies": {
+    "homebridge": "^1.6.0 || ^2.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "lib/**/*.js",
+      "index.js"
+    ]
+  },
+  "homebridge": {
+    "displayName": "UPS Monitor (NUT)",
+    "plugin_type": "platform",
+    "main": "index.js"
+  }
+}
