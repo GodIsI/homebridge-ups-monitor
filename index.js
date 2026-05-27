@@ -21,6 +21,7 @@
 const { queryNUT }        = require('./lib/nutClient');
 const { parseStatusFlags } = require('./lib/nutParser');
 const RingBuffer           = require('./lib/ringBuffer');
+const DailyLog             = require('./lib/dailyLog');
 
 const fs   = require('fs');
 const path = require('path');
@@ -76,6 +77,9 @@ class NUTDashboardPlatform {
     // Map of upsName → RingBuffer instance (one file per UPS)
     this.ringBuffers = new Map();
 
+    // Map of upsName → DailyLog instance (30-day CSV log per UPS)
+    this.dailyLogs = new Map();
+
     this.log.info(
       `NUT UPS Monitor starting — server: ${this.host}:${this.port}, ` +
       `UPS: [${this.upsList.join(', ')}]`
@@ -120,6 +124,10 @@ class NUTDashboardPlatform {
     const ringBuf  = new RingBuffer(histFile, 1440);
     this.ringBuffers.set(upsName, ringBuf);
 
+    // Daily CSV log for this UPS (30 days of per-minute voltage + load data)
+    const dailyLog = new DailyLog(this.storagePath, upsName, 30);
+    this.dailyLogs.set(upsName, dailyLog);
+
     // Initialise all tiles — each returns an update() function
     const tiles = [
       setupBatteryTile(accessory, this.api, upsName, { lowBatThreshold: this.lowBatThreshold }),
@@ -140,14 +148,18 @@ class NUTDashboardPlatform {
         tiles.forEach(tile => tile.update(data, flags));
 
         // Append telemetry point to the persistent ring buffer
-        ringBuf.push({
+        const point = {
           t:       new Date().toISOString(),
           inV:     data['input.voltage']   ?? null,
           outV:    data['output.voltage']  ?? null,
           bat:     data['battery.charge']  ?? null,
           load:    data['ups.load']        ?? null,
           runtime: data['battery.runtime'] ?? null,
-        });
+        };
+        ringBuf.push(point);
+
+        // Append voltage + load to the 30-day daily CSV log
+        dailyLog.append({ t: point.t, inV: point.inV, outV: point.outV, load: point.load });
 
         this.log.debug(
           `[${upsName}] ${flags.raw} | ` +
