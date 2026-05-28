@@ -1,0 +1,10 @@
+# CODEOWNERS
+#
+# These owners are automatically requested for review when a pull request
+# changes files that match the pattern.
+#
+# Syntax: <pattern>  <owner> [<owner> ...]
+# Owners can be GitHub usernames (@user), teams (@org/team), or email addresses.
+
+# Default owner for everything in the repo
+*       @GodIsI
