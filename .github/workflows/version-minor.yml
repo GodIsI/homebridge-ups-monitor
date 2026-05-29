@@ -1,11 +1,16 @@
 name: Bump Minor Version
 
-# Runs when a PR (typically develop → main) is merged into main.
-# Increments the MINOR number and resets PATCH to 0 (e.g. 1.0.3 → 1.1.0),
-# commits back to main, then merges main back into develop so the next
-# feature cycle starts from the correct baseline.
-# The release.yml workflow then picks up the version-bump commit and
-# builds the stable release artifact.
+# Runs when a PR (typically develop → main) is merged into main,
+# but NOT when a version-bump or sync-main PR merges (those are automated).
+#
+# Instead of pushing directly to main (blocked by branch protection),
+# this workflow:
+#   1. Creates a chore/version-bump-X.Y.0 branch from main with the bumped package.json
+#   2. Opens a PR targeting main
+#   3. Enables auto-merge — the PR merges itself once CI passes
+#
+# After that PR lands on main, sync-develop.yml fires and opens a follow-up
+# PR to carry the new version back into develop.
 
 on:
   pull_request:
@@ -15,21 +20,23 @@ on:
 jobs:
   bump-minor:
     name: Bump MINOR version
-    # Only run when the PR was actually merged (not just closed)
-    if: github.event.pull_request.merged == true
+    if: |
+      github.event.pull_request.merged == true &&
+      !startsWith(github.head_ref, 'chore/version-bump') &&
+      !startsWith(github.head_ref, 'chore/sync-main')
 
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0          # need full history for the develop merge
-          token: ${{ secrets.PAT_VERSION_BUMP || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git
         run: |
@@ -49,17 +56,25 @@ jobs:
           require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${pkg.version}\n`);
           EOF
 
-      - name: Commit and push to main
-        run: |
-          git add package.json
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}"
-          git push origin main
+      - name: Open version-bump PR to main
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          branch: chore/version-bump-${{ steps.bump.outputs.new_version }}
+          base: main
+          title: "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          body: |
+            Automated MINOR version bump triggered by merge of #${{ github.event.pull_request.number }}.
 
-      # Sync the new baseline version back to develop so the next feature
-      # cycle increments from the correct minor (e.g. 1.1.0 → 1.1.1, not 1.0.4).
-      - name: Merge main back into develop
+            This PR will auto-merge once CI passes. After it lands, sync-develop.yml
+            will open a follow-up PR to carry the new version back to develop.
+
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git checkout develop
-          git pull origin develop
-          git merge main --no-ff -m "chore: sync version ${{ steps.bump.outputs.new_version }} from main"
-          git push origin develop
+          gh pr merge ${{ steps.cpr.outputs.pull-request-number }} \
+            --auto --squash --repo ${{ github.repository }}

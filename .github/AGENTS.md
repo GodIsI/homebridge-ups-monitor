@@ -36,18 +36,16 @@ git config --local cowork.token "ghp_..."
 
 ### Branch protection (enforced on GitHub)
 
-Both `main` and `develop` have branch protection enabled — **direct pushes are blocked** except for `github-actions[bot]` (needed for automated version bump commits).
+Both `main` and `develop` have branch protection enabled — **direct pushes are blocked for everyone**, including GitHub Actions (GitHub's Rulesets do not support adding `github-actions[bot]` as a bypass actor on personal repositories).
 
 **`main`**
-- Requires a PR from `develop` only
+- Requires a PR (from `develop` only)
 - Requires all CI checks to pass (`Test (Node 18.x / 20.x / 22.x)`)
 - Requires Code Owner review (`@GodIsI`)
-- `github-actions[bot]` is a bypass actor (version bump commits)
 
 **`develop`**
-- Requires a PR from `feature/*` or `agent/*` branches
+- Requires a PR (from `feature/*`, `agent/*`, or `chore/*` branches)
 - Requires all CI checks to pass (`Test (Node 18.x / 20.x / 22.x)`)
-- `github-actions[bot]` is a bypass actor (version bump + main sync commits)
 
 ### Branch naming rules
 
@@ -57,8 +55,10 @@ Both `main` and `develop` have branch protection enabled — **direct pushes are
 | Agent-generated work | `agent/<slug>` | `agent/log-export` |
 | Bug fix | `fix/<slug>` | `fix/history-endpoint-crash` |
 | Docs / chore | `chore/<slug>` | `chore/update-readme` |
+| Automated version bump | `chore/version-bump-X.Y.Z` | created by `version-patch.yml` / `version-minor.yml` |
+| Automated develop sync | `chore/sync-main-X.Y.Z` | created by `sync-develop.yml` |
 
-**Never push directly to `develop` or `main`.** Always use a PR. The only exception is the automated `github-actions[bot]` version-bump commits.
+**Never push directly to `develop` or `main`.** Always use a PR.
 
 **Never open a PR directly to `main` from a feature branch.** `main` is fed only from `develop`.
 
@@ -184,18 +184,27 @@ This project uses **MAJOR.MINOR.PATCH** semantic versioning, bumped automaticall
 | **MINOR** | Any PR merged into `main` (a full release) | `version-minor.yml` — auto-bumps and resets PATCH to 0 |
 | **PATCH** | Any PR merged into `develop` (a feature or fix) | `version-patch.yml` — auto-bumps |
 
-### How it works
+### How it works (PR-based, no direct pushes)
+
+Because GitHub Rulesets on personal repositories cannot add `github-actions[bot]` as a bypass actor, all automated version bumps go through PRs with auto-merge enabled. The repo must have **Allow auto-merge** turned on in Settings → General.
 
 1. **Feature PR merged → `develop`**
    - `version-patch.yml` runs, bumps PATCH (e.g. `1.0.2` → `1.0.3`)
-   - Commits `chore: bump version to 1.0.3` back to `develop`
+   - Opens PR: `chore/version-bump-1.0.3` → `develop` with auto-merge enabled
+   - CI passes → PR auto-merges; squash commit message: `chore: bump version to 1.0.3`
    - That commit triggers `beta.yml`, which builds and tags a pre-release (`v1.0.3-beta.N`)
 
 2. **`develop` PR merged → `main`** (cutting a release)
    - `version-minor.yml` runs, bumps MINOR and resets PATCH (e.g. `1.0.3` → `1.1.0`)
-   - Commits `chore: bump version to 1.1.0` back to `main`
-   - Then merges `main` back into `develop` so the next patch cycle starts from `1.1.0`
+   - Opens PR: `chore/version-bump-1.1.0` → `main` with auto-merge enabled
+   - CI passes → PR auto-merges; squash commit message: `chore: bump version to 1.1.0`
    - That commit triggers `release.yml`, which builds and tags a stable release (`v1.1.0`)
+   - `sync-develop.yml` detects the version-bump PR merge and opens:
+     PR `chore/sync-main-1.1.0` → `develop` with auto-merge, carrying `1.1.0` back
+
+### Loop prevention
+
+The `if:` condition on both `version-patch.yml` and `version-minor.yml` excludes PRs whose head branch starts with `chore/version-bump` or `chore/sync-main`, so automated PRs never trigger another bump.
 
 ### Rules for agents
 
