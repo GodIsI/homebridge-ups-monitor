@@ -8,6 +8,8 @@ jobs:
   release:
     name: Stable Release
     runs-on: ubuntu-latest
+    env:
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     # Only build when the version has been bumped — not on every push to main.
     # The version-minor.yml workflow commits "chore: bump version to X.Y.Z" which
     # is what triggers a real stable release build.
@@ -50,7 +52,7 @@ jobs:
       - name: Publish to npm
         # Skipped if NPM_TOKEN is not yet configured — add it in
         # repo Settings → Secrets → Actions once you have an npm account.
-        if: ${{ secrets.NPM_TOKEN != '' }}
+        if: env.HAS_NPM_TOKEN == 'true'
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
