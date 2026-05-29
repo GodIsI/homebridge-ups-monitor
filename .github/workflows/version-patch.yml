@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: develop
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -58,7 +58,7 @@ jobs:
 
       - name: Open version-bump PR
         id: cpr
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PAT_VERSION_BUMP }}
           commit-message: "chore: bump version to ${{ steps.bump.outputs.new_version }}"
