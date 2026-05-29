@@ -509,14 +509,24 @@ function startCountdown() {
 // ── Export & Share helpers ─────────────────────────────────────────────────────
 
 /**
- * Share a CSV file using the Web Share API if supported, otherwise
- * fall back to a Blob URL download.
+ * Returns true when running on a mobile device that supports the native
+ * share sheet (iOS Safari, Android Chrome). macOS Safari technically
+ * passes canShare() but its "share" action just downloads the file — the
+ * same as our fallback — so we skip the API there and download directly.
+ */
+function isMobileShareSupported() {
+  if (!navigator.canShare) return false;
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
+
+/**
+ * Share a CSV via the native share sheet on mobile, or trigger a direct
+ * browser download on desktop.
  */
 async function shareOrDownload(filename, csvContent) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
 
-  // Try Web Share API (native share sheet on Mac, iOS, Android)
-  if (navigator.canShare) {
+  if (isMobileShareSupported()) {
     const file = new File([blob], filename, { type: 'text/csv' });
     if (navigator.canShare({ files: [file] })) {
       try {
@@ -529,7 +539,7 @@ async function shareOrDownload(filename, csvContent) {
     }
   }
 
-  // Fallback: trigger a browser download
+  // Desktop (or mobile share unavailable): trigger a direct download
   const url = URL.createObjectURL(blob);
   const a   = document.createElement('a');
   a.href = url; a.download = filename; a.style.display = 'none';
@@ -538,6 +548,9 @@ async function shareOrDownload(filename, csvContent) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/** Label shown on the export buttons — "Share / Save" on mobile, "Download CSV" on desktop. */
+const EXPORT_BTN_LABEL = isMobileShareSupported() ? '📤 Share / Save' : '⬇️ Download CSV';
 
 /**
  * Export either '24h' or '30d' data and invoke the share/download flow.
@@ -559,13 +572,20 @@ async function exportAndShare(period) {
     showError('Export failed: ' + err.message);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '📤 Share / Save';
+    btn.innerHTML = EXPORT_BTN_LABEL;
   }
+}
+
+/** Set the correct label on export buttons once the page loads. */
+function initExportButtons() {
+  document.getElementById('share-24h-btn').innerHTML = EXPORT_BTN_LABEL;
+  document.getElementById('share-30d-btn').innerHTML = EXPORT_BTN_LABEL;
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
 (async () => {
   initCharts();
+  initExportButtons();
   // First live fetch so we know the UPS name
   await fetchData();
   // Then load the full server-side history (up to 1440 points / 24h)
