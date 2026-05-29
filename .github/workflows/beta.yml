@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - develop
-      - agent/debug-oidc-publish   # temp: allow direct branch trigger for OIDC diagnosis
+      - agent/debug-oidc-publish   # temp: direct branch trigger for OIDC diagnosis
 
 jobs:
   beta:
     name: Beta Release
     runs-on: ubuntu-latest
-    # Normal gate: only run on version bumps. During debug also allow direct push.
     if: >-
       startsWith(github.event.head_commit.message, 'chore: bump version') ||
       github.ref == 'refs/heads/agent/debug-oidc-publish'
@@ -28,38 +27,76 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
-      - name: Debug npm auth config (before delete)
+      - name: Debug — all npmrc locations and OIDC env
         run: |
-          echo "=== NPM_CONFIG_USERCONFIG ==="
+          echo "====== NPM_CONFIG_USERCONFIG ======"
           echo "${NPM_CONFIG_USERCONFIG:-not set}"
-          echo "=== Userconfig file content ==="
-          USERCONFIG="${NPM_CONFIG_USERCONFIG:-$(npm config get userconfig)}"
-          echo "Using: $USERCONFIG"
-          cat "$USERCONFIG" 2>/dev/null || echo "(file not found)"
-          echo "=== npm config get auth token ==="
-          npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(error getting key)"
-          echo "=== NODE_AUTH_TOKEN length ==="
+
+          echo "====== Project .npmrc (pwd=$(pwd)) ======"
+          cat .npmrc 2>/dev/null || echo "(not found)"
+
+          echo "====== NPM_CONFIG_USERCONFIG file ======"
+          cat "${NPM_CONFIG_USERCONFIG}" 2>/dev/null || echo "(file not found at NPM_CONFIG_USERCONFIG)"
+
+          echo "====== ~/.npmrc ======"
+          cat ~/.npmrc 2>/dev/null || echo "(not found)"
+
+          echo "====== npm config get userconfig ======"
+          npm config get userconfig
+
+          echo "====== npm config ls (auth lines only) ======"
+          npm config ls -l 2>/dev/null | grep -i "authToken\|token\|_auth" || echo "(none)"
+
+          echo "====== NODE_AUTH_TOKEN ======"
           echo "Length: ${#NODE_AUTH_TOKEN}"
-          echo "=== OIDC env vars ==="
+
+          echo "====== OIDC env vars ======"
           echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+SET (${#ACTIONS_ID_TOKEN_REQUEST_URL} chars)}"
           echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET}"
 
-      - name: Remove setup-node auth token (let OIDC handle auth)
-        run: |
-          # Attempt 1: npm config delete
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
-          # Attempt 2: sed directly on the file (belt-and-suspenders)
-          USERCONFIG="${NPM_CONFIG_USERCONFIG:-$(npm config get userconfig)}"
-          sed -i '/registry\.npmjs\.org\/:_authToken/d' "$USERCONFIG" 2>/dev/null || true
-          echo "Done removing auth token"
+          echo "====== npm version ======"
+          npm --version
 
-      - name: Debug npm auth config (after delete)
+      - name: Remove ALL auth tokens for OIDC
         run: |
-          echo "=== Userconfig file content AFTER delete ==="
-          USERCONFIG="${NPM_CONFIG_USERCONFIG:-$(npm config get userconfig)}"
-          cat "$USERCONFIG" 2>/dev/null || echo "(file not found)"
-          echo "=== npm config get auth token AFTER delete ==="
-          npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(error — key absent, good)"
+          echo "--- Cleaning project .npmrc ---"
+          if [ -f .npmrc ]; then
+            echo "Before:"
+            cat .npmrc
+            sed -i '/authToken/d' .npmrc
+            echo "After:"
+            cat .npmrc
+          else
+            echo "(no project .npmrc)"
+          fi
+
+          echo "--- Cleaning NPM_CONFIG_USERCONFIG ---"
+          if [ -n "$NPM_CONFIG_USERCONFIG" ] && [ -f "$NPM_CONFIG_USERCONFIG" ]; then
+            echo "Before:"
+            cat "$NPM_CONFIG_USERCONFIG"
+            sed -i '/authToken/d' "$NPM_CONFIG_USERCONFIG"
+            echo "After:"
+            cat "$NPM_CONFIG_USERCONFIG"
+          else
+            echo "(NPM_CONFIG_USERCONFIG not set or file not found)"
+          fi
+
+          echo "--- Cleaning ~/.npmrc ---"
+          if [ -f ~/.npmrc ]; then
+            echo "Before:"
+            cat ~/.npmrc
+            sed -i '/authToken/d' ~/.npmrc
+            echo "After:"
+            cat ~/.npmrc
+          else
+            echo "(no ~/.npmrc)"
+          fi
+
+          echo "--- npm config delete (belt-and-suspenders) ---"
+          npm config delete //registry.npmjs.org/:_authToken 2>&1 || true
+
+          echo "--- Final check: npm config get authToken ---"
+          npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(key absent)"
 
       - name: Install dependencies
         run: npm ci
@@ -86,7 +123,4 @@ jobs:
           make_latest: false
 
       - name: Publish to npm with beta tag
-        # npm OIDC Trusted Publishing — no NPM_TOKEN required.
-        # Trusted Publisher: npmjs.com/package/homebridge-ups-monitor -> Settings
-        # GitHub owner: GodIsI, repo: homebridge-ups-monitor, workflow: beta.yml
         run: npm publish --access public --tag beta --provenance
