@@ -2,13 +2,18 @@ name: Beta
 
 on:
   push:
-    branches: [ develop ]
+    branches:
+      - develop
+      - agent/debug-oidc-publish   # temp: allow direct branch trigger for OIDC diagnosis
 
 jobs:
   beta:
     name: Beta Release
     runs-on: ubuntu-latest
-    if: "startsWith(github.event.head_commit.message, 'chore: bump version')"
+    # Normal gate: only run on version bumps. During debug also allow direct push.
+    if: >-
+      startsWith(github.event.head_commit.message, 'chore: bump version') ||
+      github.ref == 'refs/heads/agent/debug-oidc-publish'
 
     permissions:
       contents: write
@@ -33,7 +38,7 @@ jobs:
           cat "$USERCONFIG" 2>/dev/null || echo "(file not found)"
           echo "=== npm config get auth token ==="
           npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(error getting key)"
-          echo "=== NODE_AUTH_TOKEN set? ==="
+          echo "=== NODE_AUTH_TOKEN length ==="
           echo "Length: ${#NODE_AUTH_TOKEN}"
           echo "=== OIDC env vars ==="
           echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+SET (${#ACTIONS_ID_TOKEN_REQUEST_URL} chars)}"
@@ -70,6 +75,7 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Create beta GitHub pre-release
+        if: "startsWith(github.event.head_commit.message, 'chore: bump version')"
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.pkg.outputs.version }}-beta.${{ github.run_number }}
