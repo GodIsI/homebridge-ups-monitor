@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NUT UPS Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --surface2: #242838;
+      --border:   #2e3347;
+      --text:     #e2e8f0;
+      --text-dim: #7a8399;
+      --green:    #22c55e;
+      --yellow:   #eab308;
+      --red:      #ef4444;
+      --blue:     #3b82f6;
+      --purple:   #a855f7;
+      --orange:   #f97316;
+      --radius:   10px;
+      --shadow:   0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text);
+      padding: 16px; min-height: 100vh; font-size: 14px;
+    }
+
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px; flex-wrap: wrap; gap: 8px;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+    .header-meta { display: flex; align-items: center; gap: 12px; }
+    .refresh-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); padding: 5px 14px; border-radius: 6px;
+      cursor: pointer; font-size: 13px; transition: background 0.15s;
+    }
+    .refresh-btn:hover { background: var(--border); }
+
+    .status-banner {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 18px; border-radius: var(--radius);
+      margin-bottom: 16px; border: 1px solid transparent;
+      font-weight: 600; font-size: 15px; transition: all 0.3s;
+    }
+    .status-banner.online  { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.3);  color: var(--green);  }
+    .status-banner.battery { background: rgba(234,179,8,0.12);  border-color: rgba(234,179,8,0.3);  color: var(--yellow); }
+    .status-banner.error   { background: rgba(239,68,68,0.12);  border-color: rgba(239,68,68,0.3);  color: var(--red);    }
+    .status-banner.loading { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.2); color: var(--text-dim); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .status-banner.online  .status-dot { background: var(--green);  box-shadow: 0 0 8px var(--green); }
+    .status-banner.battery .status-dot { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .status-banner.error   .status-dot { background: var(--red);    box-shadow: 0 0 8px var(--red); }
+    .status-banner.loading .status-dot { background: var(--text-dim); }
+    .status-detail { font-size: 12px; font-weight: 400; color: var(--text-dim); margin-left: auto; }
+
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px; margin-bottom: 20px;
+    }
+    .metric-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+    }
+    .metric-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-dim); margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .metric-value { font-size: 26px; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+    .metric-unit  { font-size: 13px; font-weight: 400; color: var(--text-dim); margin-left: 3px; }
+    .metric-sub   { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+    .val-green  { color: var(--green);  } .val-yellow { color: var(--yellow); }
+    .val-red    { color: var(--red);    } .val-blue   { color: var(--blue);   }
+    .val-purple { color: var(--purple); } .val-orange { color: var(--orange); }
+    .val-normal { color: var(--text);   }
+    .battery-bar-wrap { margin-top: 8px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .battery-bar { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+
+    .chart-section {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px;
+      box-shadow: var(--shadow); margin-bottom: 16px;
+    }
+    .chart-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 6px; flex-wrap: wrap; gap: 8px;
+    }
+    .chart-header h2 {
+      font-size: 13px; font-weight: 600; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .range-btns { display: flex; gap: 4px; }
+    .range-btn {
+      padding: 3px 10px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text-dim);
+      cursor: pointer; font-size: 12px; transition: all 0.15s;
+    }
+    .range-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+    .history-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; min-height: 14px; }
+    .chart-wrap { position: relative; height: 160px; }
+
+    .ups-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .ups-tab {
+      padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text-dim);
+      cursor: pointer; font-size: 13px; transition: all 0.15s;
+    }
+    .ups-tab.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+    .countdown { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+    .countdown-bar { width: 60px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .countdown-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 1s linear; }
+
+    .error-msg {
+      background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+      border-radius: var(--radius); padding: 14px 18px;
+      color: var(--red); font-size: 13px; margin-bottom: 14px;
+    }
+
+    /* ── Export & Share section ───────────────────────────────────────────── */
+    .export-section {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px;
+      box-shadow: var(--shadow); margin-bottom: 16px;
+    }
+    .export-section h2 {
+      font-size: 13px; font-weight: 600; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
+    }
+    .share-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
+    }
+    .share-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .share-card-title {
+      font-size: 14px; font-weight: 700; color: var(--text);
+    }
+    .share-card-desc {
+      font-size: 12px; color: var(--text-dim); flex: 1; line-height: 1.5;
+    }
+    .share-btn {
+      background: var(--blue); color: #fff; border: none;
+      padding: 8px 16px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-weight: 600; transition: opacity 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin-top: 4px;
+    }
+    .share-btn:hover    { opacity: 0.85; }
+    .share-btn:disabled { opacity: 0.4; cursor: default; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ UPS Dashboard</h1>
+  <div class="header-meta">
+    <div class="countdown">
+      <span id="countdown-label">–</span>
+      <div class="countdown-bar"><div class="countdown-fill" id="countdown-fill" style="width:100%"></div></div>
+    </div>
+    <button class="refresh-btn" onclick="fetchData()">↻ Refresh</button>
+  </div>
+</div>
+
+<div id="error-area" style="display:none" class="error-msg"></div>
+<div id="ups-tabs" class="ups-tabs" style="display:none"></div>
+
+<div id="status-banner" class="status-banner loading">
+  <div class="status-dot"></div>
+  <span id="status-text">Connecting to NUT…</span>
+  <span class="status-detail" id="status-detail"></span>
+</div>
+
+<div class="metrics-grid">
+  <div class="metric-card">
+    <div class="metric-label"><span>↘</span> Input Voltage</div>
+    <div class="metric-value val-normal" id="m-input-v">–<span class="metric-unit">V</span></div>
+    <div class="metric-sub" id="m-input-v-nom"></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><span>↗</span> Output Voltage</div>
+    <div class="metric-value val-normal" id="m-output-v">–<span class="metric-unit">V</span></div>
+    <div class="metric-sub" id="m-output-v-nom"></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><span>🔋</span> Battery</div>
+    <div class="metric-value val-normal" id="m-battery">–<span class="metric-unit">%</span></div>
+    <div class="battery-bar-wrap"><div class="battery-bar" id="battery-bar" style="width:0%;background:var(--green)"></div></div>
+    <div class="metric-sub" id="m-battery-sub"></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><span>📊</span> Load</div>
+    <div class="metric-value val-normal" id="m-load">–<span class="metric-unit">%</span></div>
+    <div class="metric-sub" id="m-load-sub"></div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><span>⏱</span> Runtime</div>
+    <div class="metric-value val-normal" id="m-runtime">–</div>
+    <div class="metric-sub" id="m-runtime-sub">on battery</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><span>⚡</span> Battery Voltage</div>
+    <div class="metric-value val-normal" id="m-batt-v">–<span class="metric-unit">V</span></div>
+    <div class="metric-sub" id="m-batt-v-nom"></div>
+  </div>
+</div>
+
+<div class="chart-section">
+  <div class="chart-header">
+    <h2>Voltage History</h2>
+    <div class="range-btns">
+      <button class="range-btn" data-h="1"  onclick="setRange(1)">1h</button>
+      <button class="range-btn" data-h="6"  onclick="setRange(6)">6h</button>
+      <button class="range-btn active" data-h="24" onclick="setRange(24)">24h</button>
+    </div>
+  </div>
+  <div class="history-meta" id="history-meta"></div>
+  <div class="chart-wrap"><canvas id="voltage-chart"></canvas></div>
+</div>
+
+<div class="chart-section">
+  <div class="chart-header"><h2>Battery &amp; Load History</h2></div>
+  <div class="history-meta" id="history-meta-b"></div>
+  <div class="chart-wrap"><canvas id="battery-chart"></canvas></div>
+</div>
+
+<div class="export-section">
+  <h2>📤 Export &amp; Share</h2>
+  <div class="share-cards">
+
+    <div class="share-card">
+      <div class="share-card-title">Last 24 Hours</div>
+      <div class="share-card-desc">All data points from the current ring buffer — one row per 30‑second poll. Includes voltage, battery, load, and runtime.</div>
+      <button class="share-btn" id="share-24h-btn" onclick="exportAndShare('24h')">
+        📤 Share / Save
+      </button>
+    </div>
+
+    <div class="share-card">
+      <div class="share-card-title">Last 30 Days</div>
+      <div class="share-card-desc">All daily logs aggregated into a single CSV — one file covering up to 30 days of voltage, load, and timestamp data.</div>
+      <button class="share-btn" id="share-30d-btn" onclick="exportAndShare('30d')">
+        📤 Share / Save
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<div style="text-align:right;color:var(--text-dim);font-size:11px;margin-top:4px;" id="last-updated"></div>
+
+<script>
+const REFRESH_INTERVAL_S = 15;
+const MAX_POINTS = 1440;
+
+let allUPSData   = [];
+let activeUPSIdx = 0;
+let serverHistory = {};   // upsName → [{t,inV,outV,bat,load,runtime}]
+let activeRangeH  = 24;
+let voltageChart, batteryChart;
+let countdownVal, countdownTimer;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function parseStatus(s) {
+  if (!s) return { label: 'Unknown', cls: 'error', detail: '' };
+  s = String(s).trim().toUpperCase();
+  if (s.includes('OL') && !s.includes('OB')) {
+    const x = s.includes('CHRG') ? ' — Charging' : s.includes('DISCHRG') ? ' — Discharging' : '';
+    return { label: 'Online' + x, cls: 'online', detail: s };
+  }
+  if (s.includes('OB')) return { label: 'On Battery', cls: 'battery', detail: s };
+  if (s.includes('LB')) return { label: '⚠ Low Battery', cls: 'error', detail: s };
+  return { label: s, cls: 'loading', detail: '' };
+}
+function voltageClass(v, nom) {
+  if (v == null) return 'val-normal';
+  const p = Math.abs(v - (nom || 230)) / (nom || 230) * 100;
+  return p <= 5 ? 'val-green' : p <= 10 ? 'val-yellow' : 'val-red';
+}
+function batteryClass(p) { return p >= 50 ? 'val-green' : p >= 20 ? 'val-yellow' : 'val-red'; }
+function loadClass(p)    { return p <= 50 ? 'val-green' : p <= 80 ? 'val-yellow' : 'val-red'; }
+function barColor(p)     { return p >= 50 ? 'var(--green)' : p >= 20 ? 'var(--yellow)' : 'var(--red)'; }
+function fmtRuntime(s) {
+  if (s == null || isNaN(s)) return '–';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+  catch { return iso; }
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+function appendLivePoint(upsName, data) {
+  if (!serverHistory[upsName]) serverHistory[upsName] = [];
+  serverHistory[upsName].push({
+    t:       new Date().toISOString(),
+    inV:     data['input.voltage']   ?? null,
+    outV:    data['output.voltage']  ?? null,
+    bat:     data['battery.charge']  ?? null,
+    load:    data['ups.load']        ?? null,
+    runtime: data['battery.runtime'] ?? null,
+  });
+  if (serverHistory[upsName].length > MAX_POINTS) serverHistory[upsName].shift();
+}
+
+function slicedHistory(upsName) {
+  const all = serverHistory[upsName] || [];
+  if (!all.length) return { labels: [], inV: [], outV: [], bat: [], load: [], total: 0 };
+  const cutoff  = new Date(Date.now() - activeRangeH * 3600 * 1000).toISOString();
+  const visible = all.filter(p => p.t >= cutoff);
+  const pts     = visible.length ? visible : all.slice(-Math.min(60, all.length));
+  // Decimate to ≤120 points for chart performance
+  const step = Math.max(1, Math.floor(pts.length / 120));
+  const dec  = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+  return {
+    labels: dec.map(p => fmtTime(p.t)),
+    inV:    dec.map(p => p.inV),
+    outV:   dec.map(p => p.outV),
+    bat:    dec.map(p => p.bat),
+    load:   dec.map(p => p.load),
+    total:  all.length,
+  };
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────────
+const OPTS = {
+  responsive: true, maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: { legend: { labels: { color: '#7a8399', font: { size: 11 }, boxWidth: 10 } } },
+  scales: {
+    x: { ticks: { color: '#7a8399', font: { size: 10 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+    y: { ticks: { color: '#7a8399', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+  },
+  elements: { point: { radius: 1, hoverRadius: 4 }, line: { tension: 0.3 } },
+  animation: { duration: 200 },
+};
+
+function initCharts() {
+  voltageChart = new Chart(document.getElementById('voltage-chart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Input V',  data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true },
+      { label: 'Output V', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)',  fill: true },
+    ]},
+    options: { ...OPTS, scales: { ...OPTS.scales,
+      y: { ...OPTS.scales.y, title: { display: true, text: 'Voltage (V)', color: '#7a8399', font: { size: 10 } } } } },
+  });
+  batteryChart = new Chart(document.getElementById('battery-chart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Battery %', data: [], borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.08)', fill: true },
+      { label: 'Load %',    data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.08)',  fill: true },
+    ]},
+    options: { ...OPTS, scales: { ...OPTS.scales,
+      y: { ...OPTS.scales.y, min: 0, max: 100, title: { display: true, text: '%', color: '#7a8399', font: { size: 10 } } } } },
+  });
+}
+
+function updateCharts(upsName) {
+  const { labels, inV, outV, bat, load, total } = slicedHistory(upsName);
+
+  voltageChart.data.labels           = labels;
+  voltageChart.data.datasets[0].data = inV;
+  voltageChart.data.datasets[1].data = outV;
+  voltageChart.update();
+
+  batteryChart.data.labels           = labels;
+  batteryChart.data.datasets[0].data = bat;
+  batteryChart.data.datasets[1].data = load;
+  batteryChart.update();
+
+  const stored = total >= 60
+    ? `${Math.round(total / 60 * 10) / 10}h stored`
+    : `${total} point${total !== 1 ? 's' : ''} stored`;
+  const meta = total ? `${stored} · showing last ${activeRangeH}h · ${labels.length} plotted` : 'No history yet — data builds up over time';
+  document.getElementById('history-meta').textContent   = meta;
+  document.getElementById('history-meta-b').textContent = meta;
+}
+
+// ── Range selector ─────────────────────────────────────────────────────────────
+function setRange(h) {
+  activeRangeH = h;
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.h) === h));
+  const name = allUPSData[activeUPSIdx]?._upsName;
+  if (name) updateCharts(name);
+}
+
+// ── Render metrics ─────────────────────────────────────────────────────────────
+function renderUPS(ups) {
+  if (!ups) return;
+  const { label, cls, detail } = parseStatus(ups['ups.status']);
+  document.getElementById('status-banner').className = `status-banner ${cls}`;
+  document.getElementById('status-text').textContent =
+    `${(ups._upsName || 'UPS').toUpperCase()} — ${label}` +
+    (ups['ups.mfr'] || ups['ups.model'] ? ` (${[ups['ups.mfr'], ups['ups.model']].filter(Boolean).join(' ')})` : '');
+  document.getElementById('status-detail').textContent = detail;
+
+  setM('m-input-v',  ups['input.voltage'],  'V', voltageClass(ups['input.voltage'],  ups['input.voltage.nominal']),  ups['input.voltage.nominal']  ? `Nominal ${ups['input.voltage.nominal']}V`  : '');
+  setM('m-output-v', ups['output.voltage'], 'V', voltageClass(ups['output.voltage'], ups['output.voltage.nominal']), ups['output.voltage.nominal'] ? `Nominal ${ups['output.voltage.nominal']}V` : '');
+
+  const ch = ups['battery.charge'];
+  setM('m-battery', ch, '%', batteryClass(ch), ch != null ? `Low threshold: ${ups['battery.charge.low'] || 20}%` : '');
+  if (ch != null) {
+    const b = document.getElementById('battery-bar');
+    b.style.width = `${Math.min(100, Math.max(0, ch))}%`;
+    b.style.background = barColor(ch);
+  }
+
+  setM('m-load', ups['ups.load'], '%', loadClass(ups['ups.load']), ups['ups.realpower'] ? `~${Math.round(ups['ups.realpower'])} W` : '');
+
+  const rEl = document.getElementById('m-runtime');
+  rEl.innerHTML = fmtRuntime(ups['battery.runtime']);
+  rEl.className = 'metric-value ' + (ups['battery.runtime'] < 300 ? 'val-red' : ups['battery.runtime'] < 600 ? 'val-yellow' : 'val-green');
+
+  setM('m-batt-v', ups['battery.voltage'], 'V', 'val-purple', ups['battery.voltage.nominal'] ? `Nominal ${ups['battery.voltage.nominal']}V` : '');
+}
+
+function setM(id, val, unit, cls, sub) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (val == null) { el.innerHTML = `–<span class="metric-unit">${unit}</span>`; el.className = 'metric-value val-normal'; }
+  else { el.innerHTML = `${Number.isInteger(val) ? val : val.toFixed(1)}<span class="metric-unit">${unit}</span>`; el.className = `metric-value ${cls}`; }
+  const s = document.getElementById(id + '-nom') || document.getElementById(id + '-sub');
+  if (s && sub !== undefined) s.textContent = sub;
+}
+
+// ── Multi-UPS tabs ─────────────────────────────────────────────────────────────
+function renderTabs(arr) {
+  const el = document.getElementById('ups-tabs');
+  if (arr.length <= 1) { el.style.display = 'none'; return; }
+  el.style.display = 'flex'; el.innerHTML = '';
+  arr.forEach((ups, i) => {
+    const btn = document.createElement('button');
+    btn.className = `ups-tab${i === activeUPSIdx ? ' active' : ''}`;
+    btn.textContent = ups._upsName || `UPS ${i + 1}`;
+    btn.onclick = () => { activeUPSIdx = i; renderTabs(allUPSData); renderUPS(allUPSData[i]); updateCharts(allUPSData[i]._upsName); };
+    el.appendChild(btn);
+  });
+}
+
+// ── Server history fetch ───────────────────────────────────────────────────────
+async function fetchHistory(upsName) {
+  try {
+    const resp = await homebridge.request('/history', { upsName });
+    if (!resp.success || !Array.isArray(resp.points) || !resp.points.length) return;
+    // Merge: keep server baseline, re-attach any live points that are newer
+    const lastT = resp.points[resp.points.length - 1]?.t || '';
+    const live  = (serverHistory[upsName] || []).filter(p => p.t > lastT);
+    serverHistory[upsName] = [...resp.points, ...live];
+  } catch { /* history unavailable — charts fill in as live data arrives */ }
+}
+
+// ── Main data fetch ────────────────────────────────────────────────────────────
+async function fetchData() {
+  document.getElementById('error-area').style.display = 'none';
+  try {
+    const resp = await homebridge.request('/ups-status');
+    if (!resp.success) throw new Error(resp.error || 'Server error');
+    allUPSData = resp.data || [];
+    for (const ups of allUPSData) { if (!ups._error) appendLivePoint(ups._upsName, ups); }
+    renderTabs(allUPSData);
+    const ups = allUPSData[activeUPSIdx];
+    if (ups) {
+      if (ups._error) showError(`NUT error for ${ups._upsName}: ${ups._error}`);
+      else { renderUPS(ups); updateCharts(ups._upsName); }
+    }
+    document.getElementById('last-updated').textContent =
+      `Last updated: ${new Date().toLocaleTimeString()} — NUT at ${resp.host}:${resp.port}`;
+  } catch (err) {
+    showError('Could not reach NUT server: ' + err.message);
+    document.getElementById('status-banner').className = 'status-banner error';
+    document.getElementById('status-text').textContent = 'Connection failed';
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-area');
+  el.textContent = '⚠ ' + msg; el.style.display = 'block';
+}
+
+// ── Countdown ──────────────────────────────────────────────────────────────────
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownVal = REFRESH_INTERVAL_S;
+  countdownTimer = setInterval(() => {
+    countdownVal--;
+    const fill  = document.getElementById('countdown-fill');
+    const label = document.getElementById('countdown-label');
+    if (fill)  fill.style.width = `${(countdownVal / REFRESH_INTERVAL_S) * 100}%`;
+    if (label) label.textContent = `${countdownVal}s`;
+    if (countdownVal <= 0) { fetchData(); countdownVal = REFRESH_INTERVAL_S; }
+  }, 1000);
+}
+
+// ── Export & Share helpers ─────────────────────────────────────────────────────
+
+/**
+ * Returns true when running on a mobile device that supports the native
+ * share sheet (iOS Safari, Android Chrome). macOS Safari technically
+ * passes canShare() but its "share" action just downloads the file — the
+ * same as our fallback — so we skip the API there and download directly.
+ */
+function isMobileShareSupported() {
+  if (!navigator.canShare) return false;
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
+
+/**
+ * Share a CSV via the native share sheet on mobile, or trigger a direct
+ * browser download on desktop.
+ */
+async function shareOrDownload(filename, csvContent) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+  if (isMobileShareSupported()) {
+    const file = new File([blob], filename, { type: 'text/csv' });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return; // user cancelled — not an error
+        // Any other error: fall through to download
+      }
+    }
+  }
+
+  // Desktop (or mobile share unavailable): trigger a direct download
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = filename; a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Label shown on the export buttons — "Share / Save" on mobile, "Download CSV" on desktop. */
+const EXPORT_BTN_LABEL = isMobileShareSupported() ? '📤 Share / Save' : '⬇️ Download CSV';
+
+/**
+ * Export either '24h' or '30d' data and invoke the share/download flow.
+ * @param {'24h'|'30d'} period
+ */
+async function exportAndShare(period) {
+  const btnId = period === '24h' ? 'share-24h-btn' : 'share-30d-btn';
+  const btn   = document.getElementById(btnId);
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Preparing…';
+
+  try {
+    const upsName  = allUPSData[activeUPSIdx]?._upsName;
+    const endpoint = period === '24h' ? '/export' : '/export-30d';
+    const resp     = await homebridge.request(endpoint, { upsName });
+    if (!resp.success) throw new Error(resp.error || 'Export failed');
+    await shareOrDownload(resp.filename, resp.csv);
+  } catch (err) {
+    showError('Export failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = EXPORT_BTN_LABEL;
+  }
+}
+
+/** Set the correct label on export buttons once the page loads. */
+function initExportButtons() {
+  document.getElementById('share-24h-btn').innerHTML = EXPORT_BTN_LABEL;
+  document.getElementById('share-30d-btn').innerHTML = EXPORT_BTN_LABEL;
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+(async () => {
+  initCharts();
+  initExportButtons();
+  // First live fetch so we know the UPS name
+  await fetchData();
+  // Then load the full server-side history (up to 1440 points / 24h)
+  const upsName = allUPSData[activeUPSIdx]?._upsName;
+  if (upsName) {
+    await fetchHistory(upsName);
+    updateCharts(upsName);
+  }
+  startCountdown();
+})();
+</script>
+</body>
+</html>
