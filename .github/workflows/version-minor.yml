@@ -74,7 +74,9 @@ jobs:
       - name: Enable auto-merge
         if: steps.cpr.outputs.pull-request-number
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Must use PAT, not GITHUB_TOKEN — merges via GITHUB_TOKEN do not
+          # trigger downstream push-event workflows (e.g. release.yml).
+          GH_TOKEN: ${{ secrets.PAT_VERSION_BUMP }}
         run: |
           gh pr merge ${{ steps.cpr.outputs.pull-request-number }} \
             --auto --squash --repo ${{ github.repository }}
