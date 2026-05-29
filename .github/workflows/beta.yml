@@ -11,7 +11,7 @@ jobs:
     # Only build when the version has been bumped — not on every push to develop.
     # The version-patch.yml workflow commits "chore: bump version to X.Y.Z" which
     # is what triggers a real beta artifact build.
-    if: startsWith(github.event.head_commit.message, 'chore: bump version')
+    if: "startsWith(github.event.head_commit.message, 'chore: bump version')"
 
     permissions:
       contents: write
