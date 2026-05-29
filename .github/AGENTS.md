@@ -122,10 +122,42 @@ Not the npm global prefix. The `scripts/deploy.sh` script handles this correctly
 
 ---
 
+## Versioning
+
+This project uses **MAJOR.MINOR.PATCH** semantic versioning, bumped automatically by GitHub Actions — **agents must never edit `version` in `package.json` manually**.
+
+| Part | When it changes | Who changes it |
+|------|----------------|----------------|
+| **MAJOR** | Major rewrite / breaking change to the platform | Human, manual PR to `main` |
+| **MINOR** | Any PR merged into `main` (a full release) | `version-minor.yml` — auto-bumps and resets PATCH to 0 |
+| **PATCH** | Any PR merged into `develop` (a feature or fix) | `version-patch.yml` — auto-bumps |
+
+### How it works
+
+1. **Feature PR merged → `develop`**
+   - `version-patch.yml` runs, bumps PATCH (e.g. `1.0.2` → `1.0.3`)
+   - Commits `chore: bump version to 1.0.3` back to `develop`
+   - That commit triggers `beta.yml`, which builds and tags a pre-release (`v1.0.3-beta.N`)
+
+2. **`develop` PR merged → `main`** (cutting a release)
+   - `version-minor.yml` runs, bumps MINOR and resets PATCH (e.g. `1.0.3` → `1.1.0`)
+   - Commits `chore: bump version to 1.1.0` back to `main`
+   - Then merges `main` back into `develop` so the next patch cycle starts from `1.1.0`
+   - That commit triggers `release.yml`, which builds and tags a stable release (`v1.1.0`)
+
+### Rules for agents
+
+- **Do not** touch `"version"` in `package.json`.
+- `beta.yml` and `release.yml` only fire on commits whose message starts with `chore: bump version` — do not use that prefix for anything else.
+- If you need to reason about the current version, read it from `package.json`.
+
+---
+
 ## What Agents Must Not Do
 
 - Do not merge to `main` directly.
 - Do not modify `.github/workflows/` without a discussion comment in the PR.
+- Do not manually edit `"version"` in `package.json` — versioning is fully automated (see Versioning section above).
 - Do not add npm production dependencies without justification (plugin size matters).
 - Do not use `accessory.addService()` without first checking `accessory.getService()`.
 - Do not hardcode the Homebridge storage path — always use `this.homebridgeStoragePath || process.env.UIX_STORAGE_PATH || path.join(os.homedir(), '.homebridge')`.

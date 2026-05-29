@@ -8,6 +8,10 @@ jobs:
   release:
     name: Stable Release
     runs-on: ubuntu-latest
+    # Only build when the version has been bumped — not on every push to main.
+    # The version-minor.yml workflow commits "chore: bump version to X.Y.Z" which
+    # is what triggers a real stable release build.
+    if: startsWith(github.event.head_commit.message, 'chore: bump version')
 
     permissions:
       contents: write
