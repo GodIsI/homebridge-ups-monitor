@@ -24,7 +24,7 @@ See [AGENTS.md](AGENTS.md) for branch / PR conventions.
 
 ---
 
-## Feature 2 — 24h Ring-Buffer History `agent/ring-buffer-history`
+## Feature 2 — 24h Ring-Buffer History ✅ `agent/ring-buffer-history`
 
 **Goal:** Persist 1440 data points (one per minute) for the last 24 hours so the dashboard can render full-day charts.
 
