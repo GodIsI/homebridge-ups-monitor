@@ -29,7 +29,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0          # need full history for the develop merge
-          token: ${{ secrets.PAT_VERSION_BUMP || secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN is sufficient — github-actions[bot] is a bypass actor
+          # in both the main and develop Rulesets (Apps category).
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git
         run: |

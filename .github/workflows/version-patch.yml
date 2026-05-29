@@ -26,10 +26,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: develop
-          # PAT_VERSION_BUMP is a fine-grained PAT with Contents:Write on this
-          # repo. It is owned by a repo admin so it bypasses branch rulesets.
-          # Falls back to GITHUB_TOKEN if the secret is not set (unprotected repos).
-          token: ${{ secrets.PAT_VERSION_BUMP || secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN is sufficient — github-actions[bot] is a bypass actor
+          # in the develop Ruleset (Apps category), so the version bump commit
+          # is allowed without going through a PR.
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git
         run: |
