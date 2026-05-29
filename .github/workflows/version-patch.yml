@@ -1,7 +1,13 @@
 name: Bump Patch Version
 
-# Runs when a PR is merged into develop (but NOT a version-bump or sync-main PR —
-# those are automated and must not trigger another bump, or we'd loop forever).
+# Runs when a PR is merged into develop (but NOT a version-bump, sync-main, or
+# main PR — those are automated/sync merges and must not trigger another bump,
+# or we'd loop forever).
+#
+# Excluded head branches:
+#   chore/version-bump-* — automated patch-bump loop prevention
+#   chore/sync-main-*    — automated minor-version sync from main
+#   main                 — manual main→develop sync (use sync-develop.yml instead)
 #
 # Instead of pushing directly to develop (blocked by branch protection),
 # this workflow:
@@ -23,7 +29,8 @@ jobs:
     if: |
       github.event.pull_request.merged == true &&
       !startsWith(github.head_ref, 'chore/version-bump') &&
-      !startsWith(github.head_ref, 'chore/sync-main')
+      !startsWith(github.head_ref, 'chore/sync-main') &&
+      github.head_ref != 'main'
 
     runs-on: ubuntu-latest
 
