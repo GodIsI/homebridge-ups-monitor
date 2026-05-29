@@ -27,71 +27,6 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
-      - name: Capture npm config to job summary
-        run: |
-          {
-            echo "## npm config debug"
-            echo "### NPM_CONFIG_USERCONFIG"
-            echo '```'
-            echo "${NPM_CONFIG_USERCONFIG:-not set}"
-            echo '```'
-
-            echo "### Project .npmrc"
-            echo '```'
-            cat .npmrc 2>/dev/null || echo "(not found)"
-            echo '```'
-
-            echo "### NPM_CONFIG_USERCONFIG file"
-            echo '```'
-            cat "${NPM_CONFIG_USERCONFIG}" 2>/dev/null || echo "(not found)"
-            echo '```'
-
-            echo "### ~/.npmrc"
-            echo '```'
-            cat ~/.npmrc 2>/dev/null || echo "(not found)"
-            echo '```'
-
-            echo "### npm config ls (auth)"
-            echo '```'
-            npm config ls -l 2>/dev/null | grep -i "authToken\|token\|_auth\|registry" | head -20 || echo "(none)"
-            echo '```'
-
-            echo "### NODE_AUTH_TOKEN length"
-            echo "${#NODE_AUTH_TOKEN}"
-
-            echo "### OIDC"
-            echo "ACTIONS_ID_TOKEN_REQUEST_URL set: ${ACTIONS_ID_TOKEN_REQUEST_URL:+YES}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Remove ALL auth tokens for OIDC
-        run: |
-          # Clean project .npmrc
-          [ -f .npmrc ] && sed -i '/authToken/d' .npmrc || true
-          # Clean NPM_CONFIG_USERCONFIG
-          [ -n "$NPM_CONFIG_USERCONFIG" ] && sed -i '/authToken/d' "$NPM_CONFIG_USERCONFIG" || true
-          # Clean ~/.npmrc
-          sed -i '/authToken/d' ~/.npmrc 2>/dev/null || true
-          # Belt-and-suspenders
-          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
-
-      - name: Capture post-cleanup state to summary
-        run: |
-          {
-            echo "## After cleanup"
-            echo "### Project .npmrc"
-            echo '```'
-            cat .npmrc 2>/dev/null || echo "(not found)"
-            echo '```'
-            echo "### NPM_CONFIG_USERCONFIG file"
-            echo '```'
-            cat "${NPM_CONFIG_USERCONFIG}" 2>/dev/null || echo "(not found)"
-            echo '```'
-            echo "### npm config get authToken"
-            echo '```'
-            npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(error)"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Install dependencies
         run: npm ci
 
@@ -116,13 +51,44 @@ jobs:
           prerelease: true
           make_latest: false
 
-      - name: Capture publish error to summary
+      - name: Collect publish diagnostics
         if: always()
         run: |
-          {
-            echo "## Publish attempt"
-            echo "### npm publish output"
-            echo '```'
-            npm publish --access public --tag beta --provenance 2>&1 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p /tmp/npm-debug
+
+          echo "=== NPM_CONFIG_USERCONFIG ===" >> /tmp/npm-debug/config.txt
+          echo "${NPM_CONFIG_USERCONFIG:-not set}" >> /tmp/npm-debug/config.txt
+
+          echo "=== Project .npmrc ===" >> /tmp/npm-debug/config.txt
+          cat .npmrc 2>/dev/null >> /tmp/npm-debug/config.txt || echo "(not found)" >> /tmp/npm-debug/config.txt
+
+          echo "=== NPM_CONFIG_USERCONFIG file ===" >> /tmp/npm-debug/config.txt
+          cat "${NPM_CONFIG_USERCONFIG}" 2>/dev/null >> /tmp/npm-debug/config.txt || echo "(not found)" >> /tmp/npm-debug/config.txt
+
+          echo "=== npm config ls ===" >> /tmp/npm-debug/config.txt
+          npm config ls 2>&1 >> /tmp/npm-debug/config.txt
+
+          echo "=== NODE_AUTH_TOKEN length ===" >> /tmp/npm-debug/config.txt
+          echo "${#NODE_AUTH_TOKEN}" >> /tmp/npm-debug/config.txt
+
+          echo "=== OIDC env ===" >> /tmp/npm-debug/config.txt
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+SET (len=${#ACTIONS_ID_TOKEN_REQUEST_URL})}" >> /tmp/npm-debug/config.txt
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET}" >> /tmp/npm-debug/config.txt
+
+          echo "=== npm version ===" >> /tmp/npm-debug/config.txt
+          npm --version >> /tmp/npm-debug/config.txt
+
+          echo "=== npm publish output ===" >> /tmp/npm-debug/publish.txt
+          npm publish --access public --tag beta --provenance 2>&1 >> /tmp/npm-debug/publish.txt || true
+
+          cat /tmp/npm-debug/config.txt
+          echo "---"
+          cat /tmp/npm-debug/publish.txt
+
+      - name: Upload diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-oidc-debug
+          path: /tmp/npm-debug/
+          retention-days: 1
