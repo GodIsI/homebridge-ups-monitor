@@ -60,7 +60,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_VERSION_BUMP }}
           commit-message: "chore: bump version to ${{ steps.bump.outputs.new_version }}"
           branch: chore/version-bump-${{ steps.bump.outputs.new_version }}
           base: develop

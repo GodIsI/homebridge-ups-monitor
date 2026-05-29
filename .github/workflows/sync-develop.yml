@@ -51,7 +51,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_VERSION_BUMP }}
           commit-message: "chore: sync version ${{ steps.version.outputs.version }} from main"
           branch: chore/sync-main-${{ steps.version.outputs.version }}
           base: develop
