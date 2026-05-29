@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
       - name: Install dependencies
@@ -37,7 +38,7 @@ jobs:
         id: pkg
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Create stable release
+      - name: Create stable GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.pkg.outputs.version }}
@@ -45,3 +46,11 @@ jobs:
           files: homebridge-ups-monitor-*.tgz
           generate_release_notes: true
           make_latest: true
+
+      - name: Publish to npm
+        # Skipped if NPM_TOKEN is not yet configured — add it in
+        # repo Settings → Secrets → Actions once you have an npm account.
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

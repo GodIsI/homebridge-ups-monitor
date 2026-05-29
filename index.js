@@ -23,7 +23,6 @@ const { parseStatusFlags } = require('./lib/nutParser');
 const RingBuffer           = require('./lib/ringBuffer');
 const DailyLog             = require('./lib/dailyLog');
 
-const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
 
