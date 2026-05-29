@@ -8,8 +8,6 @@ jobs:
   beta:
     name: Beta Release
     runs-on: ubuntu-latest
-    env:
-      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     # Only build when the version has been bumped — not on every push to develop.
     # The version-patch.yml workflow commits "chore: bump version to X.Y.Z" which
     # is what triggers a real beta artifact build.
@@ -17,6 +15,8 @@ jobs:
 
     permissions:
       contents: write
+      # Required for npm Trusted Publishing (OIDC) — no NPM_TOKEN needed.
+      id-token: write
 
     steps:
       - uses: actions/checkout@v6
@@ -51,9 +51,7 @@ jobs:
           make_latest: false
 
       - name: Publish to npm with beta tag
-        # Skipped if NPM_TOKEN is not yet configured — add it in
-        # repo Settings → Secrets → Actions once you have an npm account.
-        if: env.HAS_NPM_TOKEN == 'true'
-        run: npm publish --access public --tag beta
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Uses npm Trusted Publishing (OIDC) — no NPM_TOKEN secret required.
+        # Configure on npmjs.com: profile → Publishing → Trusted Publishers
+        # → Add GitHub Actions → repo: GodIsI/homebridge-ups-monitor, workflow: beta.yml
+        run: npm publish --access public --tag beta --provenance
