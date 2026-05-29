@@ -261,6 +261,28 @@
 <div style="text-align:right;color:var(--text-dim);font-size:11px;margin-top:4px;" id="last-updated"></div>
 
 <script>
+// ── API transport — works both embedded in Homebridge UI and as standalone ────
+//
+// When loaded inside the Homebridge plugin config page, window.homebridge is
+// injected by the UI framework and requests go through its IPC channel.
+//
+// When loaded directly from the standalone HTTP server (Feature 5), there is
+// no window.homebridge — requests fall back to plain fetch() POST calls to
+// the same endpoint paths.
+//
+async function apiRequest(endpoint, body = {}) {
+  if (typeof homebridge !== 'undefined') {
+    return homebridge.request(endpoint, body);
+  }
+  const res = await fetch(endpoint, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
 const REFRESH_INTERVAL_S = 15;
 const MAX_POINTS = 1440;
 
@@ -455,7 +477,7 @@ function renderTabs(arr) {
 // ── Server history fetch ───────────────────────────────────────────────────────
 async function fetchHistory(upsName) {
   try {
-    const resp = await homebridge.request('/history', { upsName });
+    const resp = await apiRequest('/history', { upsName });
     if (!resp.success || !Array.isArray(resp.points) || !resp.points.length) return;
     // Merge: keep server baseline, re-attach any live points that are newer
     const lastT = resp.points[resp.points.length - 1]?.t || '';
@@ -468,7 +490,7 @@ async function fetchHistory(upsName) {
 async function fetchData() {
   document.getElementById('error-area').style.display = 'none';
   try {
-    const resp = await homebridge.request('/ups-status');
+    const resp = await apiRequest('/ups-status');
     if (!resp.success) throw new Error(resp.error || 'Server error');
     allUPSData = resp.data || [];
     for (const ups of allUPSData) { if (!ups._error) appendLivePoint(ups._upsName, ups); }
@@ -565,7 +587,7 @@ async function exportAndShare(period) {
   try {
     const upsName  = allUPSData[activeUPSIdx]?._upsName;
     const endpoint = period === '24h' ? '/export' : '/export-30d';
-    const resp     = await homebridge.request(endpoint, { upsName });
+    const resp     = await apiRequest(endpoint, { upsName });
     if (!resp.success) throw new Error(resp.error || 'Export failed');
     await shareOrDownload(resp.filename, resp.csv);
   } catch (err) {

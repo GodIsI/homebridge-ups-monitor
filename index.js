@@ -22,6 +22,7 @@ const { queryNUT }        = require('./lib/nutClient');
 const { parseStatusFlags } = require('./lib/nutParser');
 const RingBuffer           = require('./lib/ringBuffer');
 const DailyLog             = require('./lib/dailyLog');
+const DashboardServer      = require('./lib/dashboardServer');
 
 const path = require('path');
 const os   = require('os');
@@ -83,6 +84,24 @@ class NUTDashboardPlatform {
       `NUT UPS Monitor starting — server: ${this.host}:${this.port}, ` +
       `UPS: [${this.upsList.join(', ')}]`
     );
+
+    // Standalone dashboard server — optional, configured by standalonePort
+    this._dashboardServer = null;
+    const standalonePort = config.standalonePort;
+    if (standalonePort) {
+      this._dashboardServer = new DashboardServer({
+        storagePath: this.storagePath,
+        upsNames:    this.upsList,
+        host:        this.host,
+        nutPort:     this.port,
+        username:    this.username,
+        password:    this.password,
+        log:         this.log,
+      });
+      this._dashboardServer.start(standalonePort).catch(err => {
+        this.log.error(`[UPS Dashboard] Failed to start standalone server: ${err.message}`);
+      });
+    }
 
     this.api.on('didFinishLaunching', () => this.initAccessories());
   }

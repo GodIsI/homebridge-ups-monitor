@@ -57,6 +57,13 @@
         "minimum": 1,
         "maximum": 50,
         "description": "Battery percentage below which the Low Battery alert triggers in HomeKit."
+      },
+      "standalonePort": {
+        "title": "Standalone Dashboard Port",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535,
+        "description": "Port to host the UPS dashboard as a local website (e.g. 8581). Leave blank to disable. Access at http://homebridge.local:PORT or http://localhost:PORT."
       }
     }
   },
@@ -71,6 +78,12 @@
       "type": "fieldset",
       "title": "UPS Settings",
       "items": ["ups", "pollInterval", "lowBatteryThreshold"]
+    },
+    {
+      "type": "fieldset",
+      "title": "Standalone Dashboard",
+      "description": "Host the dashboard as a local website accessible from any browser on your network.",
+      "items": ["standalonePort"]
     }
   ]
 }

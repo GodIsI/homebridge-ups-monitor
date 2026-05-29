@@ -74,3 +74,25 @@ See [AGENTS.md](AGENTS.md) for branch / PR conventions.
 - Feature-detect `navigator.canShare` at runtime; use share flow or download fallback accordingly
 
 **Depends on:** Feature 3 (ring buffer + DailyLog already writing the source files)
+
+---
+
+## Feature 5 — Standalone Dashboard Server `agent/standalone-dashboard`
+
+**Goal:** Host the UPS dashboard as a local website on the Raspberry Pi so any browser on the network can reach it directly — no Homebridge UI, no plugin config panel required.
+
+**Config option:** `standalonePort` (integer 1–65535, optional). Leave blank to disable.
+
+**Access URLs:**
+- `http://localhost:PORT`
+- `http://homebridge.local:PORT`
+- `http://<pi-ip>:PORT`
+
+**Implementation:**
+- `lib/dashboardServer.js` — new `DashboardServer` class (Node.js built-in `http` module, no extra dependencies). Serves `homebridge-ui/public/index.html` on `GET /` and exposes all API endpoints (`/ups-status`, `/history`, `/export`, `/export-30d`, `/logs`, `/logs/download`) as `POST` routes with CORS headers.
+- `index.js` — wires `DashboardServer` into the platform constructor; starts on `standalonePort` if configured.
+- `homebridge-ui/public/index.html` — `apiRequest()` dual-mode wrapper: uses `homebridge.request()` when embedded in the Homebridge UI, plain `fetch()` when running standalone.
+- `config.schema.json` — `standalonePort` field + *Standalone Dashboard* fieldset in layout.
+- `test/dashboardServer.test.js` — 20 integration tests; 176 total passing.
+
+**Depends on:** Feature 4 (export endpoints already implemented)
