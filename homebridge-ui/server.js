@@ -9,7 +9,8 @@
  * Endpoints:
  *   POST /ups-status        → queries NUT and returns JSON for all configured UPS units
  *   POST /history           → returns 24h ring-buffer points as JSON
- *   POST /export            → returns 24h ring-buffer as a CSV string for download
+ *   POST /export            → returns 24h ring-buffer as a CSV string
+ *   POST /export-30d        → aggregates all 30-day daily logs into a single CSV string
  *   POST /logs              → lists available 30-day daily log files for a UPS
  *   POST /logs/download     → returns the contents of one daily log file as CSV
  */
@@ -28,6 +29,7 @@ class NUTUiServer extends HomebridgePluginUiServer {
     this.onRequest('/ups-status',     this.handleUpsStatus.bind(this));
     this.onRequest('/history',         this.handleHistory.bind(this));
     this.onRequest('/export',          this.handleExport.bind(this));
+    this.onRequest('/export-30d',      this.handleExport30d.bind(this));
     this.onRequest('/logs',            this.handleLogs.bind(this));
     this.onRequest('/logs/download',   this.handleLogsDownload.bind(this));
     this.ready();
@@ -173,6 +175,61 @@ class NUTUiServer extends HomebridgePluginUiServer {
         filename,
         csv: header + rows,
       };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * POST /export-30d
+   * Body: { upsName?: string }
+   *
+   * Aggregates all available daily log files for the UPS into a single CSV.
+   * Files are sorted oldest → newest so the output is chronological.
+   * Duplicate header rows are stripped — only one header appears at the top.
+   *
+   * Response:
+   *   { success: true,  upsName, filename, csv }
+   *   { success: false, error }
+   *
+   * CSV columns (from daily log files): timestamp, input_voltage, output_voltage, load_pct
+   */
+  async handleExport30d(body = {}) {
+    try {
+      const { storagePath, upsName } = this._resolveContext(body);
+
+      const prefix = `ups-log-${upsName}-`;
+      let logFiles = [];
+
+      try {
+        logFiles = fs.readdirSync(storagePath)
+          .filter(f => f.startsWith(prefix) && f.endsWith('.csv'))
+          .sort();  // lexicographic = chronological for YYYY-MM-DD filenames
+      } catch {
+        // storageDir doesn't exist yet — return header-only CSV
+      }
+
+      const HEADER = 'timestamp,input_voltage,output_voltage,load_pct';
+      const dataRows = [];
+
+      for (const filename of logFiles) {
+        try {
+          const content = fs.readFileSync(path.join(storagePath, filename), 'utf8');
+          const lines   = content.split('\n');
+          // Skip the header line (first line); collect non-empty data rows
+          for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim()) dataRows.push(lines[i]);
+          }
+        } catch {
+          // Skip unreadable files — best-effort
+        }
+      }
+
+      const csv      = HEADER + (dataRows.length ? '\n' + dataRows.join('\n') : '');
+      const date     = new Date().toISOString().slice(0, 10);
+      const filename = `ups-${upsName}-30d-${date}.csv`;
+
+      return { success: true, upsName, filename, csv };
     } catch (err) {
       return { success: false, error: err.message };
     }

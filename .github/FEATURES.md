@@ -53,19 +53,24 @@ See [AGENTS.md](AGENTS.md) for branch / PR conventions.
 
 ---
 
-## Feature 4 — Cloud Push `agent/cloud-push`
+## Feature 4 — Export & Share `agent/export-share`
 
-**Goal:** Forward live UPS data to an external time-series store or webhook for long-term trending and alerting outside HomeKit.
+**Goal:** Replace the current Data Export panel with a clean two-button share flow that feels native on any device (Mac, iPhone, iPad, Android).
 
-**Supported targets (config-driven, all optional):**
-- **InfluxDB v2** — line protocol over HTTP, tag = upsName
-- **Generic webhook** — POST JSON payload on every poll
-- **MQTT** — publish to `homebridge/ups/<upsName>/<variable>` topics
+**What changes:**
+- Remove the per-day file table and the separate 24h / per-day download buttons
+- Replace with two clearly-labelled actions: **Last 24 Hours** and **Last 30 Days**
+- **Last 24 Hours** — existing ring buffer as CSV (unchanged data source)
+- **Last 30 Days** — server aggregates all `ups-log-<upsName>-YYYY-MM-DD.csv` files into a single CSV, newest-first, on demand
+- Both actions use the **Web Share API** (`navigator.share({ files: [...] })`) where supported — gives the native share sheet on Mac, iOS, and Android
+- Falls back to a Blob URL download on browsers that don't support Web Share API (e.g. Firefox desktop)
 
-**Design:**
-- New `lib/pushers/` directory, one module per target
-- Each pusher is initialised in the platform constructor if the relevant config keys are present
-- Push happens after each successful poll, fire-and-forget (errors logged, never throw)
-- Zero new production dependencies for InfluxDB and webhook targets (Node `http`/`https` only); MQTT requires `mqtt` package
+**Server changes:**
+- New `POST /export-30d` endpoint — reads all daily log files, concatenates (single header row, all data rows), returns CSV string + suggested filename
+- Existing `POST /export` (24h) unchanged
 
-**Depends on:** Feature 1 (clean data-flow pattern in poll loop)
+**Dashboard changes:**
+- Replace `.export-section` HTML with a simpler two-card layout
+- Feature-detect `navigator.canShare` at runtime; use share flow or download fallback accordingly
+
+**Depends on:** Feature 3 (ring buffer + DailyLog already writing the source files)

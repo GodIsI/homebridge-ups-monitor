@@ -125,7 +125,7 @@
       color: var(--red); font-size: 13px; margin-bottom: 14px;
     }
 
-    /* ── Log export section ───────────────────────────────────────────────── */
+    /* ── Export & Share section ───────────────────────────────────────────── */
     .export-section {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 18px;
@@ -135,47 +135,29 @@
       font-size: 13px; font-weight: 600; color: var(--text-dim);
       text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px;
     }
-    .export-row {
-      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    .share-cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
     }
-    .export-btn {
+    .share-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .share-card-title {
+      font-size: 14px; font-weight: 700; color: var(--text);
+    }
+    .share-card-desc {
+      font-size: 12px; color: var(--text-dim); flex: 1; line-height: 1.5;
+    }
+    .share-btn {
       background: var(--blue); color: #fff; border: none;
-      padding: 7px 16px; border-radius: 6px; cursor: pointer;
+      padding: 8px 16px; border-radius: 6px; cursor: pointer;
       font-size: 13px; font-weight: 600; transition: opacity 0.15s;
-      display: flex; align-items: center; gap: 6px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin-top: 4px;
     }
-    .export-btn:hover   { opacity: 0.85; }
-    .export-btn:disabled { opacity: 0.4; cursor: default; }
-    .export-btn.secondary {
-      background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim);
-    }
-    .export-divider {
-      border: none; border-top: 1px solid var(--border); margin: 14px 0;
-    }
-    .log-files-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
-    }
-    .log-files-header span {
-      font-size: 12px; font-weight: 600; color: var(--text-dim);
-      text-transform: uppercase; letter-spacing: 0.06em;
-    }
-    .log-table {
-      width: 100%; border-collapse: collapse; font-size: 12px;
-    }
-    .log-table th {
-      text-align: left; color: var(--text-dim); font-weight: 500;
-      padding: 5px 8px; border-bottom: 1px solid var(--border);
-    }
-    .log-table td { padding: 6px 8px; border-bottom: 1px solid rgba(46,51,71,0.5); }
-    .log-table tr:last-child td { border-bottom: none; }
-    .log-table tr:hover td { background: rgba(255,255,255,0.02); }
-    .log-dl-btn {
-      background: none; border: 1px solid var(--border); color: var(--text-dim);
-      padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-      transition: all 0.15s;
-    }
-    .log-dl-btn:hover { border-color: var(--blue); color: var(--blue); }
-    .log-empty { color: var(--text-dim); font-size: 12px; padding: 8px 0; }
+    .share-btn:hover    { opacity: 0.85; }
+    .share-btn:disabled { opacity: 0.4; cursor: default; }
   </style>
 </head>
 <body>
@@ -254,24 +236,26 @@
 </div>
 
 <div class="export-section">
-  <h2>📥 Data Export</h2>
+  <h2>📤 Export &amp; Share</h2>
+  <div class="share-cards">
 
-  <div class="export-row">
-    <button class="export-btn" id="export-24h-btn" onclick="download24h()">
-      ⬇ Export 24h CSV
-    </button>
-    <span style="font-size:12px;color:var(--text-dim)">
-      Downloads the current 24-hour ring-buffer as a CSV file.
-    </span>
+    <div class="share-card">
+      <div class="share-card-title">Last 24 Hours</div>
+      <div class="share-card-desc">All data points from the current ring buffer — one row per 30‑second poll. Includes voltage, battery, load, and runtime.</div>
+      <button class="share-btn" id="share-24h-btn" onclick="exportAndShare('24h')">
+        📤 Share / Save
+      </button>
+    </div>
+
+    <div class="share-card">
+      <div class="share-card-title">Last 30 Days</div>
+      <div class="share-card-desc">All daily logs aggregated into a single CSV — one file covering up to 30 days of voltage, load, and timestamp data.</div>
+      <button class="share-btn" id="share-30d-btn" onclick="exportAndShare('30d')">
+        📤 Share / Save
+      </button>
+    </div>
+
   </div>
-
-  <hr class="export-divider" />
-
-  <div class="log-files-header">
-    <span>📂 30-Day Log Files</span>
-    <button class="export-btn secondary" onclick="fetchLogList()">↻ Refresh</button>
-  </div>
-  <div id="log-files-area"><p class="log-empty">Loading…</p></div>
 </div>
 
 <div style="text-align:right;color:var(--text-dim);font-size:11px;margin-top:4px;" id="last-updated"></div>
@@ -522,13 +506,32 @@ function startCountdown() {
   }, 1000);
 }
 
-// ── Export helpers ─────────────────────────────────────────────────────────────
+// ── Export & Share helpers ─────────────────────────────────────────────────────
 
-/** Trigger a browser CSV download from an in-memory string. */
-function triggerDownload(filename, csvContent) {
+/**
+ * Share a CSV file using the Web Share API if supported, otherwise
+ * fall back to a Blob URL download.
+ */
+async function shareOrDownload(filename, csvContent) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+
+  // Try Web Share API (native share sheet on Mac, iOS, Android)
+  if (navigator.canShare) {
+    const file = new File([blob], filename, { type: 'text/csv' });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return; // user cancelled — not an error
+        // Any other error: fall through to download
+      }
+    }
+  }
+
+  // Fallback: trigger a browser download
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
   a.href = url; a.download = filename; a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
@@ -536,69 +539,27 @@ function triggerDownload(filename, csvContent) {
   URL.revokeObjectURL(url);
 }
 
-/** Export the 24h ring-buffer as a CSV download. */
-async function download24h() {
-  const btn = document.getElementById('export-24h-btn');
-  btn.disabled = true; btn.textContent = '⏳ Exporting…';
+/**
+ * Export either '24h' or '30d' data and invoke the share/download flow.
+ * @param {'24h'|'30d'} period
+ */
+async function exportAndShare(period) {
+  const btnId = period === '24h' ? 'share-24h-btn' : 'share-30d-btn';
+  const btn   = document.getElementById(btnId);
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Preparing…';
+
   try {
-    const upsName = allUPSData[activeUPSIdx]?._upsName;
-    const resp    = await homebridge.request('/export', { upsName });
+    const upsName  = allUPSData[activeUPSIdx]?._upsName;
+    const endpoint = period === '24h' ? '/export' : '/export-30d';
+    const resp     = await homebridge.request(endpoint, { upsName });
     if (!resp.success) throw new Error(resp.error || 'Export failed');
-    triggerDownload(resp.filename, resp.csv);
+    await shareOrDownload(resp.filename, resp.csv);
   } catch (err) {
     showError('Export failed: ' + err.message);
   } finally {
-    btn.disabled = false; btn.textContent = '⬇ Export 24h CSV';
-  }
-}
-
-/** Download a specific daily log file. */
-async function downloadLog(filename, btnEl) {
-  btnEl.disabled = true; btnEl.textContent = '⏳';
-  try {
-    const upsName = allUPSData[activeUPSIdx]?._upsName;
-    const resp    = await homebridge.request('/logs/download', { upsName, filename });
-    if (!resp.success) throw new Error(resp.error || 'Download failed');
-    triggerDownload(resp.filename, resp.csv);
-  } catch (err) {
-    showError('Download failed: ' + err.message);
-  } finally {
-    btnEl.disabled = false; btnEl.textContent = '⬇';
-  }
-}
-
-/** Fetch and render the list of available 30-day log files. */
-async function fetchLogList() {
-  const area = document.getElementById('log-files-area');
-  area.innerHTML = '<p class="log-empty">Loading…</p>';
-  try {
-    const upsName = allUPSData[activeUPSIdx]?._upsName;
-    const resp    = await homebridge.request('/logs', { upsName });
-    if (!resp.success) throw new Error(resp.error || 'Could not load log list');
-
-    if (!resp.files || resp.files.length === 0) {
-      area.innerHTML = '<p class="log-empty">No daily log files yet — they appear after the first full day of polling.</p>';
-      return;
-    }
-
-    const rows = resp.files.map(f => {
-      const kb = (f.sizeBytes / 1024).toFixed(1);
-      return `<tr>
-        <td>${f.date}</td>
-        <td style="color:var(--text-dim)">${kb} KB</td>
-        <td style="text-align:right">
-          <button class="log-dl-btn" onclick="downloadLog('${f.filename}', this)">⬇</button>
-        </td>
-      </tr>`;
-    }).join('');
-
-    area.innerHTML = `
-      <table class="log-table">
-        <thead><tr><th>Date</th><th>Size</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  } catch (err) {
-    area.innerHTML = `<p class="log-empty" style="color:var(--red)">⚠ ${err.message}</p>`;
+    btn.disabled = false;
+    btn.innerHTML = '📤 Share / Save';
   }
 }
 
@@ -613,8 +574,6 @@ async function fetchLogList() {
     await fetchHistory(upsName);
     updateCharts(upsName);
   }
-  // Load the 30-day log file list
-  fetchLogList();
   startCountdown();
 })();
 </script>
