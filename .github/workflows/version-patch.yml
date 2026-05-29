@@ -1,0 +1,79 @@
+name: Bump Patch Version
+
+# Runs when a PR is merged into develop (but NOT a version-bump or sync-main PR —
+# those are automated and must not trigger another bump, or we'd loop forever).
+#
+# Instead of pushing directly to develop (blocked by branch protection),
+# this workflow:
+#   1. Creates a chore/version-bump-X.X.X branch with the bumped package.json
+#   2. Opens a PR targeting develop
+#   3. Enables auto-merge — the PR merges itself once CI passes
+#
+# The "chore: bump version to X.X.X" squash-commit that lands on develop
+# then triggers beta.yml, which builds the pre-release artifact.
+
+on:
+  pull_request:
+    branches: [ develop ]
+    types: [ closed ]
+
+jobs:
+  bump-patch:
+    name: Bump PATCH version
+    if: |
+      github.event.pull_request.merged == true &&
+      !startsWith(github.head_ref, 'chore/version-bump') &&
+      !startsWith(github.head_ref, 'chore/sync-main')
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump PATCH in package.json
+        id: bump
+        run: |
+          node - <<'EOF'
+          const fs  = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const [major, minor, patch] = pkg.version.split('.').map(Number);
+          pkg.version = `${major}.${minor}.${patch + 1}`;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          console.log(`Bumped to ${pkg.version}`);
+          require('fs').appendFileSync(process.env.GITHUB_OUTPUT, `new_version=${pkg.version}\n`);
+          EOF
+
+      - name: Open version-bump PR
+        id: cpr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.PAT_VERSION_BUMP }}
+          commit-message: "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          branch: chore/version-bump-${{ steps.bump.outputs.new_version }}
+          base: develop
+          title: "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          body: |
+            Automated PATCH version bump triggered by merge of #${{ github.event.pull_request.number }}.
+
+            This PR will auto-merge once CI passes.
+
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ steps.cpr.outputs.pull-request-number }} \
+            --auto --squash --repo ${{ github.repository }}
