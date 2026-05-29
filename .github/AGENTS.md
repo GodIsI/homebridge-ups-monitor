@@ -8,12 +8,38 @@ This file is the authoritative guide for AI agents (GitHub Copilot, Claude, etc.
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | Stable, production-ready. Every merge triggers a GitHub Release + tarball. |
-| `develop` | Integration branch. All features and fixes land here first. |
-| `agent/<slug>` | Agent-generated work. Branch from `develop`, PR back to `develop`. |
-| `feature/<slug>` | Human-initiated features. Same rules as `agent/`. |
+| `main` | Stable, production-ready. Only `develop` may open a PR here. Every merge triggers a GitHub Release + tarball. |
+| `develop` | Integration branch. All features and fixes land here first via PR. |
+| `feature/<slug>` | Human-initiated features. Branch from `develop`, PR back to `develop`. |
+| `agent/<slug>` | Agent-generated work. Same rules as `feature/`. |
 
-**Never open a PR directly to `main`.** `main` is fed only from `develop` when a release is cut.
+### Branch protection (enforced on GitHub)
+
+Both `main` and `develop` have branch protection enabled — **direct pushes are blocked** except for `github-actions[bot]` (needed for automated version bump commits).
+
+**`main`**
+- Requires a PR from `develop` only
+- Requires all CI checks to pass (`Test (Node 18.x / 20.x / 22.x)`)
+- Requires Code Owner review (`@GodIsI`)
+- `github-actions[bot]` is a bypass actor (version bump commits)
+
+**`develop`**
+- Requires a PR from `feature/*` or `agent/*` branches
+- Requires all CI checks to pass (`Test (Node 18.x / 20.x / 22.x)`)
+- `github-actions[bot]` is a bypass actor (version bump + main sync commits)
+
+### Branch naming rules
+
+| Work type | Branch pattern | Example |
+|-----------|---------------|---------|
+| New feature (human) | `feature/<slug>` | `feature/log-export` |
+| Agent-generated work | `agent/<slug>` | `agent/log-export` |
+| Bug fix | `fix/<slug>` | `fix/history-endpoint-crash` |
+| Docs / chore | `chore/<slug>` | `chore/update-readme` |
+
+**Never push directly to `develop` or `main`.** Always use a PR. The only exception is the automated `github-actions[bot]` version-bump commits.
+
+**Never open a PR directly to `main` from a feature branch.** `main` is fed only from `develop`.
 
 ---
 
