@@ -23,6 +23,12 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
+      - name: Remove setup-node auth token (let OIDC handle auth)
+        # setup-node writes _authToken=${NODE_AUTH_TOKEN} to .npmrc.
+        # With no NODE_AUTH_TOKEN set, npm gets an empty token and fails
+        # before OIDC via --provenance can take over. Delete the line first.
+        run: npm config delete //registry.npmjs.org/:_authToken
+
       - name: Install dependencies
         run: npm ci
 
