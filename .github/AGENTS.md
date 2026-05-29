@@ -50,9 +50,14 @@ git fetch origin
 git status                         # must be clean
 git log --oneline origin/develop -5
 git checkout -b agent/<slug> origin/develop
+git push -u origin agent/<slug>    # ← REQUIRED: sets upstream to the agent branch,
+                                   #   not to develop. Without this, git push goes
+                                   #   straight to develop, bypassing the PR process.
 ```
 
-Replace `<slug>` with a short, kebab-case description of the work (e.g., `agent/homekit-tiles`, `agent/ring-buffer-history`).
+Replace `<slug>` with a short, kebab-case description of the work (e.g., `agent/homekit-tiles`, `agent/log-export`).
+
+**Never skip the `git push -u origin agent/<slug>` step.** It must happen before any commits are made so the remote tracking branch is correct from the start.
 
 ---
 

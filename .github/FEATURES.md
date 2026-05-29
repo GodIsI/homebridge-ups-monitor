@@ -38,16 +38,18 @@ See [AGENTS.md](AGENTS.md) for branch / PR conventions.
 
 ---
 
-## Feature 3 — Log Export `agent/log-export`
+## Feature 3 — Log Export ✅ `agent/log-export`
 
-**Goal:** One-click CSV download of the 24h history data from the dashboard panel.
+**Goal:** One-click CSV download of the 24h history data from the dashboard panel, plus access to 30-day daily log files.
 
-**Design:**
-- New UI endpoint: `POST /export` → streams `history.csv` (timestamp, voltage_in, voltage_out, battery_pct, load_pct, runtime_min)
-- Dashboard adds a **Download CSV** button that hits `/export` and triggers a browser download
-- File name: `ups-<upsName>-<date>.csv`
+**Delivered:**
+- `POST /export` → 24h ring-buffer as CSV (timestamp, input_voltage, output_voltage, battery_pct, load_pct, runtime_min)
+- `POST /logs` → lists available 30-day daily log files for a UPS, newest first
+- `POST /logs/download` → serves a single daily CSV; filename validated against strict regex to prevent path traversal
+- Dashboard **Data Export** panel: Export 24h CSV button + 30-day log file table with per-row download buttons
+- 15 new tests; 152 total passing
 
-**Depends on:** Feature 2 (ring-buffer history)
+**Depends on:** Feature 2 (ring-buffer history + DailyLog)
 
 ---
 
