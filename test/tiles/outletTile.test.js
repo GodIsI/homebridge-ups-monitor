@@ -1,6 +1,6 @@
 'use strict';
 
-const { api, Characteristic, Service, makeMockAccessory } = require('./helpers');
+const { api, Service, makeMockAccessory } = require('./helpers');
 const setupOutletTile = require('../../lib/tiles/outletTile');
 
 function make() {

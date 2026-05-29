@@ -286,7 +286,7 @@ class NUTUiServer extends HomebridgePluginUiServer {
    */
   async handleLogsDownload(body = {}) {
     try {
-      const { storagePath, upsName } = this._resolveContext(body);
+      const { storagePath } = this._resolveContext(body);
 
       const filename = body.filename;
       if (!filename) {

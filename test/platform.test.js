@@ -149,7 +149,7 @@ function loadPlatform() {
     registerPlatform: (_p, _n, Cls) => { PlatformClass = Cls; },
     registerPlatformAccessories: jest.fn(),
     platformAccessory: class {
-      constructor(n, u) { return makeMockAccessory(); }
+      constructor(_n, _u) { return makeMockAccessory(); }
     },
   };
   require('../index')(fakeApi);
