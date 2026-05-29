@@ -23,11 +23,38 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
+      - name: Debug npm auth config (before delete)
+        run: |
+          echo "=== NPM_CONFIG_USERCONFIG ==="
+          echo "${NPM_CONFIG_USERCONFIG:-not set}"
+          echo "=== Userconfig file content ==="
+          USERCONFIG="${NPM_CONFIG_USERCONFIG:-$(npm config get userconfig)}"
+          echo "Using: $USERCONFIG"
+          cat "$USERCONFIG" 2>/dev/null || echo "(file not found)"
+          echo "=== npm config get auth token ==="
+          npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(error getting key)"
+          echo "=== NODE_AUTH_TOKEN set? ==="
+          echo "Length: ${#NODE_AUTH_TOKEN}"
+          echo "=== OIDC env vars ==="
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:+SET (${#ACTIONS_ID_TOKEN_REQUEST_URL} chars)}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET}"
+
       - name: Remove setup-node auth token (let OIDC handle auth)
-        # setup-node writes _authToken=${NODE_AUTH_TOKEN} to .npmrc.
-        # With no NODE_AUTH_TOKEN set, npm gets an empty token and fails
-        # before OIDC via --provenance can take over. Delete the line first.
-        run: npm config delete //registry.npmjs.org/:_authToken
+        run: |
+          # Attempt 1: npm config delete
+          npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
+          # Attempt 2: sed directly on the file (belt-and-suspenders)
+          USERCONFIG="${NPM_CONFIG_USERCONFIG:-$(npm config get userconfig)}"
+          sed -i '/registry\.npmjs\.org\/:_authToken/d' "$USERCONFIG" 2>/dev/null || true
+          echo "Done removing auth token"
+
+      - name: Debug npm auth config (after delete)
+        run: |
+          echo "=== Userconfig file content AFTER delete ==="
+          USERCONFIG="${NPM_CONFIG_USERCONFIG:-$(npm config get userconfig)}"
+          cat "$USERCONFIG" 2>/dev/null || echo "(file not found)"
+          echo "=== npm config get auth token AFTER delete ==="
+          npm config get //registry.npmjs.org/:_authToken 2>&1 || echo "(error — key absent, good)"
 
       - name: Install dependencies
         run: npm ci
@@ -54,6 +81,6 @@ jobs:
 
       - name: Publish to npm with beta tag
         # npm OIDC Trusted Publishing — no NPM_TOKEN required.
-        # Trusted Publisher: npmjs.com/package/homebridge-ups-monitor → Settings
+        # Trusted Publisher: npmjs.com/package/homebridge-ups-monitor -> Settings
         # GitHub owner: GodIsI, repo: homebridge-ups-monitor, workflow: beta.yml
         run: npm publish --access public --tag beta --provenance
