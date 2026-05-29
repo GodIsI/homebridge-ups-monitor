@@ -20,8 +20,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '20.x'
-          # No registry-url here — it would write an empty _authToken to .npmrc
-          # and block the OIDC flow. npm publishes to registry.npmjs.org by default.
+          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
       - name: Install dependencies
@@ -48,7 +47,7 @@ jobs:
           make_latest: false
 
       - name: Publish to npm with beta tag
-        # npm OIDC Trusted Publishing — no token required.
-        # Trusted Publisher configured at:
-        # npmjs.com/package/homebridge-ups-monitor → Settings → Trusted Publisher
+        # npm OIDC Trusted Publishing — no NPM_TOKEN required.
+        # Trusted Publisher: npmjs.com/package/homebridge-ups-monitor → Settings
+        # GitHub owner: GodIsI, repo: homebridge-ups-monitor, workflow: beta.yml
         run: npm publish --access public --tag beta --provenance
