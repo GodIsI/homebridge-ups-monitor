@@ -73,7 +73,8 @@ Add the platform to your Homebridge `config.json`, or use the **Settings** panel
       "port": 3493,
       "ups": ["ups"],
       "pollInterval": 30,
-      "lowBatteryThreshold": 20
+      "lowBatteryThreshold": 20,
+      "standalonePort": 4080
     }
   ]
 }
@@ -90,6 +91,7 @@ Add the platform to your Homebridge `config.json`, or use the **Settings** panel
 | `ups` | `["ups"]` | Array of UPS names as shown by `upsc -l`. Usually just `["ups"]`. |
 | `pollInterval` | `30` | Seconds between NUT queries for HomeKit updates. |
 | `lowBatteryThreshold` | `20` | Battery % below which the HomeKit Low Battery alert fires. |
+| `standalonePort` | _(disabled)_ | Port for the standalone dashboard web server (1–65535). When set, the dashboard is served at `http://homebridge.local:PORT` and accessible from any browser on your network — no Homebridge UI required. Leave blank to disable. |
 
 ---
 
@@ -107,6 +109,30 @@ History is stored in the browser's local storage so it persists across page refr
 
 ---
 
+
+## Standalone Dashboard
+
+By default the dashboard is only accessible through the Homebridge UI. If you want to open it from a phone, tablet, or any browser on your local network **without needing Homebridge open**, enable the standalone server by setting `standalonePort` in your config:
+
+```json
+"standalonePort": 4080
+```
+
+Once Homebridge restarts, the dashboard is available at:
+
+| URL | Use case |
+|-----|----------|
+| `http://homebridge.local:4080` | From any device on your local network (mDNS name) |
+| `http://localhost:4080` | From the Pi itself |
+| `http://<pi-ip>:4080` | If mDNS isn't working — replace with your Pi's IP address |
+
+The standalone server serves the same live dashboard as the Homebridge UI panel — voltage charts, battery history, load, runtime — and updates every 15 seconds.
+
+**To disable**, remove `standalonePort` from your config (or leave it blank) and restart Homebridge.
+
+> **Security note:** The standalone server has no authentication. Only enable it if your home network is trusted or you're comfortable with local network access to your UPS data.
+
+---
 ## NUT Variables Used
 
 | NUT Variable | Dashboard | HomeKit |
