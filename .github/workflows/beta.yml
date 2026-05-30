@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'   # OIDC Trusted Publishing requires Node 22.14+ / npm 11.5.1+
+          node-version: '24'   # Node 24 ships with npm 11, which is required for OIDC Trusted Publishing
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
@@ -48,7 +48,7 @@ jobs:
 
       - name: Publish to npm with beta tag
         # npm OIDC Trusted Publishing — no token needed.
-        # Requires Node 22.14+ (npm 11.5.1+). --provenance is automatic.
+        # Requires npm 11+ (ships with Node 24). Provenance is automatic.
         # Trusted Publisher: npmjs.com → homebridge-ups-monitor → Settings
         #   GitHub owner: GodIsI  repo: homebridge-ups-monitor  workflow: beta.yml
         run: npm publish --access public --tag beta
