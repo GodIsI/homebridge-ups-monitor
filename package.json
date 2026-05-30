@@ -41,7 +41,7 @@
     "homebridge": ">=1.6.0"
   },
   "dependencies": {
-    "@homebridge/plugin-ui-utils": ">=0.0.0"
+    "@homebridge/plugin-ui-utils": "^2.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
