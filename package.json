@@ -1,7 +1,7 @@
 {
   "name": "homebridge-ups-monitor",
-  "version": "1.2.0",
-  "description": "Homebridge platform plugin \u2014 monitors UPS via NUT (Network UPS Tools) with live voltage, battery, load and runtime dashboard",
+  "version": "1.2.1",
+  "description": "Homebridge platform plugin — monitors UPS via NUT (Network UPS Tools) with live voltage, battery, load and runtime dashboard",
   "main": "index.js",
   "scripts": {
     "lint": "eslint .",
