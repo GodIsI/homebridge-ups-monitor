@@ -1,0 +1,46 @@
+name: Publish
+
+# Single workflow for ALL npm publishing — keeps the Trusted Publisher on npmjs.com
+# to one entry. Update this file for any npm publish changes; beta.yml and release.yml
+# handle only the GitHub release artefacts.
+#
+# Trusted Publisher (npmjs.com → homebridge-ups-monitor → Settings):
+#   GitHub owner: GodIsI  repo: homebridge-ups-monitor  workflow: publish.yml
+
+on:
+  push:
+    branches:
+      - develop   # publishes with --tag beta
+      - main      # publishes with --tag latest
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    if: "startsWith(github.event.head_commit.message, 'chore: bump version')"
+
+    permissions:
+      id-token: write   # Required for npm OIDC Trusted Publishing
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'   # Node 24 ships npm 11, required for OIDC Trusted Publishing
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Publish beta (develop → npm beta tag)
+        if: github.ref == 'refs/heads/develop'
+        run: npm publish --access public --tag beta
+
+      - name: Publish stable (main → npm latest tag)
+        if: github.ref == 'refs/heads/main'
+        run: npm publish --access public
