@@ -4,7 +4,7 @@
 
 [![npm](https://img.shields.io/npm/v/homebridge-ups-monitor?style=flat-square)](https://www.npmjs.com/package/homebridge-ups-monitor)
 [![npm](https://img.shields.io/npm/dt/homebridge-ups-monitor?style=flat-square)](https://www.npmjs.com/package/homebridge-ups-monitor)
-[![CI](https://github.com/GodIsI/homebridge-ups-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/GodIsI/homebridge-ups-monitor/actions/workflows/ci.yml)
+[![CI](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/actions/workflows/ci.yml)
 [![Socket Badge](https://socket.dev/api/badge/npm/package/homebridge-ups-monitor)](https://socket.dev/npm/package/homebridge-ups-monitor)
 
 A Homebridge platform plugin that monitors your **UPS (Uninterruptible Power Supply)** via [NUT (Network UPS Tools)](https://networkupstools.org/), exposing it as a native HomeKit accessory and providing a **standalone web dashboard** you can open from any browser on your network.
@@ -69,7 +69,7 @@ sudo npm install -g homebridge-ups-monitor
 ### Local development
 
 ```bash
-git clone https://github.com/GodIsI/homebridge-ups-monitor.git
+git clone https://github.com/Plimmerton-Labs/homebridge-ups-monitor.git
 cd homebridge-ups-monitor
 sudo npm install -g .
 ```
@@ -233,10 +233,10 @@ Set a `username` and `password` in the plugin config matching an entry in `/etc/
 
 ## Contributing
 
-Pull requests and issues are welcome on [GitHub](https://github.com/GodIsI/homebridge-ups-monitor/issues).
+Pull requests and issues are welcome on [GitHub](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues). Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a substantial change.
 
 ---
 
 ## License
 
-MIT © [GodIsI](https://github.com/GodIsI)
+MIT © [Plimmerton Labs](https://github.com/Plimmerton-Labs)

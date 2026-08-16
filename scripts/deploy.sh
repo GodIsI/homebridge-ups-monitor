@@ -11,7 +11,7 @@ set -euo pipefail
 PLUGIN_DIR="/var/lib/homebridge/node_modules/homebridge-ups-monitor"
 # Fall back to ~/.homebridge if the above doesn't exist
 [ -d "/var/lib/homebridge/node_modules" ] || PLUGIN_DIR="$HOME/.homebridge/node_modules/homebridge-ups-monitor"
-REPO="GodIsI/homebridge-ups-monitor"
+REPO="Plimmerton-Labs/homebridge-ups-monitor"
 CHANNEL="stable"
 
 for arg in "$@"; do
