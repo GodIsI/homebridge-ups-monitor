@@ -1,6 +1,6 @@
 'use strict';
 
-const { parseNUTResponse, parseStatusFlags } = require('../lib/nutParser');
+const { parseNUTResponse, parseStatusFlags, parseNUTErrors, NUT_ERROR_CATALOG } = require('../lib/nutParser');
 
 // ── parseNUTResponse ──────────────────────────────────────────────────────────
 
@@ -105,6 +105,89 @@ describe('parseNUTResponse', () => {
       const buffer = 'VAR ups battery.charge "50"\nVAR ups battery.charge "60"\n';
       expect(parseNUTResponse(buffer)['battery.charge']).toBe(60);
     });
+  });
+
+});
+
+// ── parseNUTErrors ──────────────────────────────────────────────────────────────
+
+describe('parseNUTErrors', () => {
+
+  test('returns an empty array when there are no ERR lines', () => {
+    expect(parseNUTErrors('VAR ups battery.charge "90"\nOK Goodbye\n')).toEqual([]);
+  });
+
+  test('returns an empty array for empty/null/undefined buffers', () => {
+    expect(parseNUTErrors('')).toEqual([]);
+    expect(parseNUTErrors(null)).toEqual([]);
+    expect(parseNUTErrors(undefined)).toEqual([]);
+  });
+
+  test('classifies DATA-STALE as stale-data and retryable, with guidance', () => {
+    const [err] = parseNUTErrors('ERR DATA-STALE\n', { upsName: 'ups' });
+    expect(err.code).toBe('DATA-STALE');
+    expect(err.category).toBe('stale-data');
+    expect(err.retryable).toBe(true);
+    expect(err.guidance).toEqual(expect.stringContaining('ups'));
+    expect(err.guidance.toLowerCase()).toEqual(expect.stringContaining('driver'));
+  });
+
+  test('classifies UNKNOWN-UPS as unknown-ups, not retryable, with guidance naming the UPS', () => {
+    const [err] = parseNUTErrors('ERR UNKNOWN-UPS\n', { upsName: 'basement' });
+    expect(err.category).toBe('unknown-ups');
+    expect(err.retryable).toBe(false);
+    expect(err.guidance).toEqual(expect.stringContaining('basement'));
+    expect(err.guidance.toLowerCase()).toEqual(expect.stringContaining('case-sensitive'));
+  });
+
+  test('classifies ACCESS-DENIED as auth, not retryable, with guidance', () => {
+    const [err] = parseNUTErrors('ERR ACCESS-DENIED\n', { upsName: 'ups' });
+    expect(err.category).toBe('auth');
+    expect(err.retryable).toBe(false);
+    expect(err.guidance).toBeTruthy();
+  });
+
+  test('classifies VAR-NOT-SUPPORTED as unsupported with no guidance', () => {
+    const [err] = parseNUTErrors('ERR VAR-NOT-SUPPORTED\n', { upsName: 'ups' });
+    expect(err.category).toBe('unsupported');
+    expect(err.retryable).toBe(false);
+    expect(err.guidance).toBeNull();
+  });
+
+  test('falls back to category "server", non-retryable, for an unrecognised code', () => {
+    const [err] = parseNUTErrors('ERR SOME-FUTURE-CODE\n', { upsName: 'ups' });
+    expect(err.code).toBe('SOME-FUTURE-CODE');
+    expect(err.category).toBe('server');
+    expect(err.retryable).toBe(false);
+  });
+
+  test('parses multiple ERR lines from one buffer, in order', () => {
+    const buffer = 'ERR VAR-NOT-SUPPORTED\nERR DATA-STALE\n';
+    const errors = parseNUTErrors(buffer, { upsName: 'ups' });
+    expect(errors).toHaveLength(2);
+    expect(errors[0].code).toBe('VAR-NOT-SUPPORTED');
+    expect(errors[1].code).toBe('DATA-STALE');
+  });
+
+  test('ignores VAR and OK lines, only extracting ERR lines', () => {
+    const buffer = 'OK\nVAR ups battery.charge "90"\nERR DATA-STALE\nOK Goodbye\n';
+    expect(parseNUTErrors(buffer, { upsName: 'ups' })).toHaveLength(1);
+  });
+
+  test('works without a ctx argument (guidance functions tolerate a missing upsName)', () => {
+    expect(() => parseNUTErrors('ERR DATA-STALE\n')).not.toThrow();
+  });
+
+  test('NUT_ERROR_CATALOG marks every "unsupported" entry as non-retryable with no guidance', () => {
+    for (const [code, entry] of Object.entries(NUT_ERROR_CATALOG)) {
+      if (entry.category === 'unsupported') {
+        expect(entry.retryable).toBe(false);
+        expect(entry.guidance({ upsName: 'ups' })).toBeNull();
+      } else {
+        // every non-'unsupported' catalog entry should have SOMETHING meaningful to say
+        expect(entry.guidance({ upsName: code === 'no-ups' ? undefined : 'ups' })).toBeTruthy();
+      }
+    }
   });
 
 });
