@@ -1,3 +1,9 @@
+## [1.18.1](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.0...v1.18.1) (2026-09-01)
+
+### Bug Fixes
+
+* surface NUT protocol errors with actionable diagnostics ([32c6773](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/32c6773fef7a9f9dc5ff53ade58acfce6be313e1)), closes [#237](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/237)
+
 ## [1.18.0](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.17.1-beta.389...v1.18.0) (2026-08-16)
 
 ## [1.17.1-beta.389](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.17.0...v1.17.1-beta.389) (2026-08-16)
