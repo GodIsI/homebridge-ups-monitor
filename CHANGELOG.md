@@ -1,10 +1,13 @@
-## [1.18.1](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.0...v1.18.1) (2026-09-01)
+## [1.18.2](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.1-beta.395...v1.18.2) (2026-09-01)
 
 ### Bug Fixes
 
+* address PR [#242](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/242) review — empty replies, cross-UPS chart bleed, tab tests ([1b6a0d6](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/1b6a0d6fbda60ddef8698f7d628d54f648e05eec)), closes [#241](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/241)
+* close three diagnostic-rendering and history gaps from [#241](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/241) ([7342a39](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/7342a3977c6c6f28caec9402f92f5f9d73d8cd23)), closes [#238](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/238) [#237](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/237)
+* make dashboardScript.js's <script> extraction regex case-insensitive ([fca6837](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/fca6837999c11aff39be8293460b73c0234ddf80))
 * surface NUT protocol errors with actionable diagnostics ([32c6773](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/32c6773fef7a9f9dc5ff53ade58acfce6be313e1)), closes [#237](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/237)
 
-## [1.18.0](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.17.1-beta.389...v1.18.0) (2026-08-16)
+## [1.18.1-beta.395](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.0...v1.18.1-beta.395) (2026-08-16)
 
 ## [1.17.1-beta.389](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.17.0...v1.17.1-beta.389) (2026-08-16)
 
