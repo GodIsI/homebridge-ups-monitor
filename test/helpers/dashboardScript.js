@@ -35,7 +35,11 @@ const BOOT_MARKER = '// ── Boot ';
 /** Extract the inline <script>...</script> body, minus the trailing boot IIFE. */
 function extractScript() {
   const html = fs.readFileSync(HTML_PATH, 'utf8');
-  const m = html.match(/<script>([\s\S]*)<\/script>/);
+  // Case-insensitive: dashboard.html always writes lowercase <script>, but
+  // this is parsing our own committed file for a test harness, not
+  // sanitizing untrusted input — match defensively regardless (flagged by
+  // CodeQL js/bad-tag-filter for the case-sensitive form).
+  const m = html.match(/<script>([\s\S]*)<\/script>/i);
   if (!m) throw new Error('dashboardScript helper: no inline <script> found in dashboard.html');
   const full = m[1];
   const bootIdx = full.indexOf(BOOT_MARKER);
