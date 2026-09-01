@@ -218,6 +218,24 @@ describe('DashboardServer', () => {
       expect(entry._lastKnownGood).toMatchObject({ t: '2026-01-01T00:01:00.000Z', bat: 88, load: 32 });
     });
 
+    test('_lastKnownGood skips a trailing all-null legacy point and returns the last usable reading (#241)', async () => {
+      const histFile = path.join(storageDir, 'ups-history-testups.json');
+      const buf = new RingBuffer(histFile, 100);
+      buf.push({ t: '2026-01-01T00:00:00.000Z', inV: 229, outV: 229, bat: 90, load: 30, runtime: 5000 });
+      buf.push({ t: '2026-01-01T00:01:00.000Z', inV: 230, outV: 230, bat: 88, load: 32, runtime: 4900 });
+      // Pre-#238 all-null point, as a failed poll could still push before the telemetry-integrity fix.
+      buf.push({ t: '2026-01-01T00:02:00.000Z', inV: null, outV: null, bat: null, load: null, runtime: null });
+
+      const { queryNUT } = require('../lib/nutClient');
+      queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+        code: 'DATA-STALE', category: 'stale-data', retryable: true,
+      }));
+
+      const { body } = await post(port, '/ups-status');
+      const [entry] = body.data;
+      expect(entry._lastKnownGood).toMatchObject({ t: '2026-01-01T00:01:00.000Z', bat: 88, load: 32 });
+    });
+
     test('_lastKnownGood is null when no history has been recorded yet', async () => {
       const { queryNUT } = require('../lib/nutClient');
       queryNUT.mockRejectedValueOnce(Object.assign(new Error('UNKNOWN-UPS'), {

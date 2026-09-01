@@ -248,6 +248,44 @@ describe('queryNUT — NUT protocol errors (mock server)', () => {
     }
   });
 
+  test('rejects with a NUTQueryError when every requested variable is unsupported (#241 — was silently resolving with {})', async () => {
+    // Empty data map: the mock server answers every GET VAR with ERR VAR-NOT-SUPPORTED.
+    const { server, port } = await startMock({});
+    try {
+      const err = await queryNUT('127.0.0.1', port, 'ups', null, null, ['input.voltage', 'battery.charge']).catch(e => e);
+      expect(err).toBeInstanceOf(NUTQueryError);
+      expect(err.code).toBe('VAR-NOT-SUPPORTED');
+      expect(err.category).toBe('unsupported');
+      expect(err.retryable).toBe(false);
+      expect(err.upsName).toBe('ups');
+      expect(err.message).toEqual(expect.stringContaining('ups'));
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('rejects when the default NUT_VARS list is used against a driver that supports none of them', async () => {
+    const { server, port } = await startMock({});
+    try {
+      await expect(
+        queryNUT('127.0.0.1', port, 'ups', null, null)
+      ).rejects.toThrow(NUTQueryError);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('still resolves when at least one requested variable is supported, even if others are not', async () => {
+    const { server, port } = await startMock(MOCK_DATA);
+    try {
+      await expect(
+        queryNUT('127.0.0.1', port, 'ups', null, null, ['input.voltage', 'totally.unsupported'])
+      ).resolves.toMatchObject({ 'input.voltage': 230.5 });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
   test('recovery: a failed DATA-STALE query is followed by a normal successful query once the driver recovers', async () => {
     const { server: staleServer, port: stalePort } = await startMock(MOCK_DATA, { globalError: 'DATA-STALE' });
     await expect(

@@ -48,6 +48,74 @@ describe('telemetryStore.readHistory', () => {
   });
 });
 
+describe('telemetryStore.lastKnownGood', () => {
+  test('returns the newest point when it carries a usable reading', () => {
+    const dir = tmpDir();
+    seedRing(dir, 'ups', [
+      { t: '2024-01-01T00:00:00.000Z', inV: 230, outV: 229, bat: 100, load: 10, runtime: 1200 },
+      { t: '2024-01-01T00:00:30.000Z', inV: 231, outV: 230, bat: 99,  load: 11, runtime: 1100 },
+    ]);
+    const point = store.lastKnownGood(dir, 'ups');
+    expect(point).toMatchObject({ t: '2024-01-01T00:00:30.000Z', bat: 99 });
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('skips a trailing all-null legacy point (written before the failed-poll telemetry-integrity fix) and returns the last usable one', () => {
+    const dir = tmpDir();
+    seedRing(dir, 'ups', [
+      { t: '2024-01-01T00:00:00.000Z', inV: 230, outV: 229, bat: 100, load: 10, runtime: 1200 },
+      { t: '2024-01-01T00:00:30.000Z', inV: 231, outV: 230, bat: 99,  load: 11, runtime: 1100 },
+      // Pre-#238 behaviour could push a timestamp-only point on a failed poll.
+      { t: '2024-01-01T00:01:00.000Z', inV: null, outV: null, bat: null, load: null, runtime: null },
+    ]);
+    const point = store.lastKnownGood(dir, 'ups');
+    expect(point).toMatchObject({ t: '2024-01-01T00:00:30.000Z', bat: 99 });
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('skips multiple trailing all-null points, not just one', () => {
+    const dir = tmpDir();
+    seedRing(dir, 'ups', [
+      { t: '2024-01-01T00:00:00.000Z', inV: 230, outV: 229, bat: 100, load: 10, runtime: 1200 },
+      { t: '2024-01-01T00:00:30.000Z', inV: null, outV: null, bat: null, load: null, runtime: null },
+      { t: '2024-01-01T00:01:00.000Z', inV: null, outV: null, bat: null, load: null, runtime: null },
+    ]);
+    const point = store.lastKnownGood(dir, 'ups');
+    expect(point).toMatchObject({ t: '2024-01-01T00:00:00.000Z', bat: 100 });
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('returns null when every persisted point is all-null', () => {
+    const dir = tmpDir();
+    seedRing(dir, 'ups', [
+      { t: '2024-01-01T00:00:00.000Z', inV: null, outV: null, bat: null, load: null, runtime: null },
+    ]);
+    expect(store.lastKnownGood(dir, 'ups')).toBeNull();
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('returns null when no history file exists', () => {
+    const dir = tmpDir();
+    expect(store.lastKnownGood(dir, 'ups')).toBeNull();
+    fs.rmSync(dir, { recursive: true });
+  });
+});
+
+describe('telemetryStore.hasUsableMetric', () => {
+  test('true when at least one metric is a number, including 0', () => {
+    expect(store.hasUsableMetric({ inV: null, outV: null, bat: 0, load: null, runtime: null })).toBe(true);
+  });
+
+  test('false for a timestamp-only point', () => {
+    expect(store.hasUsableMetric({ t: '2024-01-01T00:00:00.000Z' })).toBe(false);
+  });
+
+  test('false for null/undefined input', () => {
+    expect(store.hasUsableMetric(null)).toBe(false);
+    expect(store.hasUsableMetric(undefined)).toBe(false);
+  });
+});
+
 describe('telemetryStore.buildHistoryCsv', () => {
   test('emits the unified header and converts runtime to minutes', () => {
     const dir = tmpDir();

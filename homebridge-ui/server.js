@@ -107,14 +107,13 @@ class NUTUiServer extends HomebridgePluginUiServer {
     };
   }
 
-  /** Most recent persisted telemetry point for a UPS, or null if none yet. */
+  /**
+   * Most recent persisted telemetry point for a UPS that actually carries a
+   * reading (see telemetryStore.lastKnownGood for why "last written" isn't
+   * good enough), or null if none exists.
+   */
   _lastKnownGoodFor(dataDir, upsName) {
-    try {
-      const points = telemetryStore.readHistory(dataDir, upsName);
-      return points.length ? points[points.length - 1] : null;
-    } catch {
-      return null; // history not readable yet — not fatal, just nothing to show
-    }
+    return telemetryStore.lastKnownGood(dataDir, upsName);
   }
 
   /**
