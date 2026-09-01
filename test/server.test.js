@@ -636,6 +636,30 @@ describe('POST /ups-status — NUT protocol error handling', () => {
     fs.rmSync(dir, { recursive: true });
   });
 
+  test('_lastKnownGood skips a trailing all-null legacy point and returns the last usable reading (#241)', async () => {
+    const dir = tmpDir();
+    const buf = populateRingBuffer(dir, 'ups', 2); // points 0, 1 — point 1 is the newest usable one
+    // Pre-#238 all-null point, as a failed poll could still push before the telemetry-integrity fix.
+    buf.push({
+      t: new Date(Date.now() + 5 * 60000).toISOString(),
+      inV: null, outV: null, bat: null, load: null, runtime: null,
+    });
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+      code: 'DATA-STALE', category: 'stale-data', retryable: true,
+    }));
+
+    const resp = await ctx.handleUpsStatus();
+    const [entry] = resp.data;
+    const expected = makePoint(1);
+    expect(entry._lastKnownGood).toMatchObject({
+      inV: expected.inV, outV: expected.outV, bat: expected.bat,
+      load: expected.load, runtime: expected.runtime,
+    });
+
+    fs.rmSync(dir, { recursive: true });
+  });
+
   test('_lastKnownGood is null when no history has been recorded yet', async () => {
     const dir = tmpDir();
     const ctx = makeServerCtx(dir, 'ups');

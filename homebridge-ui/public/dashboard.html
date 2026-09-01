@@ -742,11 +742,21 @@ function renderTabs(arr) {
     btn.onclick = async () => {
       activeUPSIdx = i;
       renderTabs(allUPSData);
-      renderUPS(allUPSData[i]);
-      await fetchHistory(allUPSData[i]._upsName, { force: true });
-      updateCharts(allUPSData[i]._upsName);
-      renderOutages(allUPSData[i]._upsName);
-      fetchOutages(allUPSData[i]._upsName);
+      const ups = allUPSData[i];
+      renderActiveUPS(ups);
+      // History, charts and outages are keyed by upsName and read data that's
+      // independent of whether *this* live query just succeeded — they don't
+      // need a healthy ups._error state to render correctly, so they always
+      // run for the newly selected UPS. Gating them on !ups._error (like the
+      // live-metrics branch inside renderActiveUPS) would leave the
+      // previously active UPS's chart/outage panels on screen under the
+      // newly selected UPS's tab (see #241/#242 review finding 2).
+      if (ups && ups._upsName) {
+        await fetchHistory(ups._upsName, { force: true });
+        updateCharts(ups._upsName);
+        renderOutages(ups._upsName);
+        fetchOutages(ups._upsName);
+      }
     };
     el.appendChild(btn);
   });
@@ -794,7 +804,6 @@ function pointToUpsFields(p) {
 }
 
 async function fetchData() {
-  document.getElementById('error-area').style.display = 'none';
   try {
     const resp = await apiRequest('/ups-status');
     if (!resp.success) throw new Error(resp.error || 'Server error');
@@ -802,14 +811,11 @@ async function fetchData() {
     for (const ups of allUPSData) { if (!ups._error) appendLivePoint(ups._upsName, ups); }
     renderTabs(allUPSData);
     const ups = allUPSData[activeUPSIdx];
-    if (ups) {
-      if (ups._error) showUpsError(ups);
-      else {
-        renderUPS(ups);
-        await fetchHistory(ups._upsName);
-        updateCharts(ups._upsName);
-        fetchOutages(ups._upsName);
-      }
+    renderActiveUPS(ups);
+    if (ups && !ups._error) {
+      await fetchHistory(ups._upsName);
+      updateCharts(ups._upsName);
+      fetchOutages(ups._upsName);
     }
     document.getElementById('last-updated').textContent =
       `Last updated: ${new Date().toLocaleTimeString()} — NUT at ${resp.host}:${resp.port}`;
@@ -818,6 +824,18 @@ async function fetchData() {
     document.getElementById('status-banner').className = 'status-banner error';
     document.getElementById('status-text').textContent = 'Connection failed';
   }
+}
+
+// Render whichever UPS is currently active — the error banner + any
+// last-known-good metrics via showUpsError(), or plain live metrics via
+// renderUPS() — clearing any previous error banner first. Used by both
+// fetchData()'s periodic refresh and the tab-switch handler so the two
+// paths can't render an errored UPS differently (see issue #241).
+function renderActiveUPS(ups) {
+  document.getElementById('error-area').style.display = 'none';
+  if (!ups) return;
+  if (ups._error) showUpsError(ups);
+  else renderUPS(ups);
 }
 
 // Render a failed /ups-status entry for one UPS: the error banner (with
