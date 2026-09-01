@@ -8,7 +8,7 @@
  */
 
 const net = require('net');
-const { queryNUT } = require('../lib/nutClient');
+const { queryNUT, NUTQueryError } = require('../lib/nutClient');
 
 // ── Mock NUT server ───────────────────────────────────────────────────────────
 
@@ -36,9 +36,14 @@ const MOCK_DATA = {
  * Closes the connection cleanly on LOGOUT.
  *
  * @param {Object} data   Variable map to serve (defaults to MOCK_DATA)
+ * @param {Object} [opts]
+ * @param {string} [opts.globalError]  When set, every GET VAR (regardless of
+ *   variable) gets `ERR <globalError>` instead of a value — simulates a
+ *   driver-wide failure (DATA-STALE, UNKNOWN-UPS, ACCESS-DENIED, ...) rather
+ *   than a single unsupported variable.
  * @returns {Promise<net.Server>}
  */
-function createMockNUTServer(data = MOCK_DATA) {
+function createMockNUTServer(data = MOCK_DATA, opts = {}) {
   return new Promise(resolve => {
     const server = net.createServer(socket => {
       let buf = '';
@@ -68,7 +73,9 @@ function createMockNUTServer(data = MOCK_DATA) {
           const m = cmd.match(/^GET VAR (\S+) (\S+)/);
           if (m) {
             const [, upsName, varName] = m;
-            if (data[varName] !== undefined) {
+            if (opts.globalError) {
+              socket.write(`ERR ${opts.globalError}\n`);
+            } else if (data[varName] !== undefined) {
               socket.write(`VAR ${upsName} ${varName} "${data[varName]}"\n`);
             } else {
               socket.write('ERR VAR-NOT-SUPPORTED\n');
@@ -80,6 +87,12 @@ function createMockNUTServer(data = MOCK_DATA) {
 
     server.listen(0, '127.0.0.1', () => resolve(server));
   });
+}
+
+/** Start a mock server and resolve { server, port }; caller must close it. */
+async function startMock(data, opts) {
+  const server = await createMockNUTServer(data, opts);
+  return { server, port: server.address().port };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -179,4 +192,77 @@ describe('queryNUT — error handling', () => {
       await new Promise(resolve => silentServer.close(resolve));
     }
   }, 3000); // Jest timeout for this individual test
+});
+
+describe('queryNUT — NUT protocol errors (mock server)', () => {
+  test('rejects with a NUTQueryError when upsd returns ERR DATA-STALE', async () => {
+    const { server, port } = await startMock(MOCK_DATA, { globalError: 'DATA-STALE' });
+    try {
+      const err = await queryNUT('127.0.0.1', port, 'ups', null, null, ['ups.status']).catch(e => e);
+      expect(err).toBeInstanceOf(NUTQueryError);
+      expect(err.code).toBe('DATA-STALE');
+      expect(err.category).toBe('stale-data');
+      expect(err.retryable).toBe(true);
+      expect(err.upsName).toBe('ups');
+      expect(err.guidance).toEqual(expect.stringContaining('driver'));
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('rejects with a NUTQueryError when upsd returns ERR UNKNOWN-UPS, naming the UPS in guidance', async () => {
+    const { server, port } = await startMock(MOCK_DATA, { globalError: 'UNKNOWN-UPS' });
+    try {
+      const err = await queryNUT('127.0.0.1', port, 'basement', null, null, ['ups.status']).catch(e => e);
+      expect(err).toBeInstanceOf(NUTQueryError);
+      expect(err.code).toBe('UNKNOWN-UPS');
+      expect(err.category).toBe('unknown-ups');
+      expect(err.retryable).toBe(false);
+      expect(err.guidance).toEqual(expect.stringContaining('basement'));
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('rejects with a NUTQueryError when upsd returns ERR ACCESS-DENIED', async () => {
+    const { server, port } = await startMock(MOCK_DATA, { globalError: 'ACCESS-DENIED' });
+    try {
+      const err = await queryNUT('127.0.0.1', port, 'ups', 'baduser', 'badpass', ['ups.status']).catch(e => e);
+      expect(err).toBeInstanceOf(NUTQueryError);
+      expect(err.code).toBe('ACCESS-DENIED');
+      expect(err.category).toBe('auth');
+      expect(err.retryable).toBe(false);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('does NOT reject when only optional variables are unsupported (existing silent-omit behaviour)', async () => {
+    const { server, port } = await startMock(MOCK_DATA);
+    try {
+      await expect(
+        queryNUT('127.0.0.1', port, 'ups', null, null, ['input.voltage', 'nonexistent.variable'])
+      ).resolves.toMatchObject({ 'input.voltage': 230.5 });
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('recovery: a failed DATA-STALE query is followed by a normal successful query once the driver recovers', async () => {
+    const { server: staleServer, port: stalePort } = await startMock(MOCK_DATA, { globalError: 'DATA-STALE' });
+    await expect(
+      queryNUT('127.0.0.1', stalePort, 'ups', null, null, ['ups.status'])
+    ).rejects.toThrow(NUTQueryError);
+    await new Promise(resolve => staleServer.close(resolve));
+
+    // "Driver recovers" — same UPS, now backed by a healthy mock server.
+    const { server: healthyServer, port: healthyPort } = await startMock(MOCK_DATA);
+    try {
+      await expect(
+        queryNUT('127.0.0.1', healthyPort, 'ups', null, null, ['ups.status', 'battery.charge'])
+      ).resolves.toMatchObject({ 'ups.status': 'OL', 'battery.charge': 85 });
+    } finally {
+      await new Promise(resolve => healthyServer.close(resolve));
+    }
+  });
 });

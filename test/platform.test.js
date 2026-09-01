@@ -389,6 +389,132 @@ describe('NUTDashboardPlatform — HomeKit tile services (Feature 1)', () => {
         expect.stringContaining('NUT query failed')
       );
     });
+
+    test('appends guidance to the log line when the rejection carries it (NUTQueryError shape)', async () => {
+      const { NUTDashboardPlatform, queryNUT } = loadPlatform();
+      const nutErr = new Error('DATA-STALE');
+      nutErr.code = 'DATA-STALE';
+      nutErr.category = 'stale-data';
+      nutErr.retryable = true;
+      nutErr.guidance = 'Check the driver status and USB connectivity.';
+      queryNUT.mockRejectedValue(nutErr);
+
+      const log = makeMockLog();
+      const api = makeMockApi();
+      let launchCb;
+      api.on.mockImplementation((e, cb) => { if (e === 'didFinishLaunching') launchCb = cb; });
+
+      const platform = new NUTDashboardPlatform(log, { ups: 'ups' }, api);
+      const acc = makeMockAccessory();
+      platform.cachedAccessories.set('mock-uuid', acc);
+
+      launchCb();
+      await flushPromises();
+
+      expect(log.error).toHaveBeenCalledWith(
+        expect.stringContaining('Check the driver status and USB connectivity.')
+      );
+    });
+
+    test('does not append anything extra when the rejection has no guidance (plain Error)', async () => {
+      const { NUTDashboardPlatform, queryNUT } = loadPlatform();
+      queryNUT.mockRejectedValue(new Error('Connection refused'));
+
+      const log = makeMockLog();
+      const api = makeMockApi();
+      let launchCb;
+      api.on.mockImplementation((e, cb) => { if (e === 'didFinishLaunching') launchCb = cb; });
+
+      const platform = new NUTDashboardPlatform(log, { ups: 'ups' }, api);
+      const acc = makeMockAccessory();
+      platform.cachedAccessories.set('mock-uuid', acc);
+
+      launchCb();
+      await flushPromises();
+
+      expect(log.error).toHaveBeenCalledWith(
+        '[ups] NUT query failed: Connection refused'
+      );
+    });
+
+    test('protects telemetry integrity: a failed poll writes no history point and does not update tiles', async () => {
+      const { NUTDashboardPlatform, queryNUT } = loadPlatform();
+      queryNUT.mockRejectedValue(Object.assign(new Error('DATA-STALE'), {
+        code: 'DATA-STALE', category: 'stale-data', retryable: true,
+      }));
+
+      // Spy on the underlying store writers rather than inspecting real files —
+      // storagePaths.js's cross-version migration can pull unrelated data files
+      // into whatever storage path this test uses, which would make a raw
+      // file-existence check unreliable. Requiring these AFTER loadPlatform()'s
+      // jest.resetModules() gets the exact module instances index.js uses.
+      const RingBuffer = require('../lib/ringBuffer');
+      const DailyLog    = require('../lib/dailyLog');
+      const OutageLog   = require('../lib/outageLog');
+      const pushSpy   = jest.spyOn(RingBuffer.prototype, 'push');
+      const appendSpy = jest.spyOn(DailyLog.prototype, 'append');
+      const recordSpy = jest.spyOn(OutageLog.prototype, 'record');
+
+      const log = makeMockLog();
+      const api = makeMockApi();
+      let launchCb;
+      api.on.mockImplementation((e, cb) => { if (e === 'didFinishLaunching') launchCb = cb; });
+
+      const platform = new NUTDashboardPlatform(log, { ups: 'ups' }, api);
+      const acc = makeMockAccessory();
+      platform.cachedAccessories.set('mock-uuid', acc);
+
+      launchCb();
+      await flushPromises();
+
+      // A failed poll must never produce an all-null telemetry point (see
+      // issue #237) — none of the three stores should have been written to.
+      expect(pushSpy).not.toHaveBeenCalled();
+      expect(appendSpy).not.toHaveBeenCalled();
+      expect(recordSpy).not.toHaveBeenCalled();
+
+      // Tiles never had .update() called, so no HomeKit characteristic was
+      // pushed to a blank/unknown value either.
+      expect(acc.getService(Service.Battery).get('BatteryLevel')).toBeUndefined();
+
+      expect(log.error).toHaveBeenCalledWith(expect.stringContaining('NUT query failed'));
+    });
+
+    test('recovery: once the NUT query starts succeeding again, a real (non-null) history point is written', async () => {
+      const { NUTDashboardPlatform, queryNUT } = loadPlatform();
+      queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+        code: 'DATA-STALE', category: 'stale-data', retryable: true,
+      }));
+      queryNUT.mockResolvedValueOnce(MAINS_DATA);
+
+      const RingBuffer = require('../lib/ringBuffer');
+      const pushSpy = jest.spyOn(RingBuffer.prototype, 'push');
+
+      const api = makeMockApi();
+      let launchCb;
+      api.on.mockImplementation((e, cb) => { if (e === 'didFinishLaunching') launchCb = cb; });
+      const platform = new NUTDashboardPlatform(makeMockLog(), { ups: 'ups' }, api);
+      platform.cachedAccessories.set('mock-uuid', makeMockAccessory());
+
+      // First poll (immediate, on construction) fails — nothing pushed.
+      launchCb();
+      await flushPromises();
+      expect(pushSpy).not.toHaveBeenCalled();
+
+      // Re-run the same self-scheduling poll loop's tick manually (setTimeout
+      // is stubbed out for this whole suite) to simulate the driver recovering
+      // in time for the next scheduled poll.
+      const stores = { ringBuf: platform.ringBuffers.get('ups'), dailyLog: platform.dailyLogs.get('ups'), outageLog: platform.outageLogs.get('ups') };
+      const tiles  = platform._createTiles(makeMockAccessory(), 'ups');
+      platform._startPollLoop('ups', tiles, stores);
+      await flushPromises();
+
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+      const point = pushSpy.mock.calls[0][0];
+      expect(point.bat).toBe(85);
+      expect(point.load).toBe(42);
+      expect(point.inV).toBe(230.5);
+    });
   });
 
   describe('storage path resolution', () => {

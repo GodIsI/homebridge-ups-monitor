@@ -168,6 +168,74 @@ describe('DashboardServer', () => {
     expect(body.data[0]._upsName).toBe('testups');
   });
 
+  describe('POST /ups-status — NUT protocol error handling (issue #237)', () => {
+    test('a NUTQueryError-shaped rejection is surfaced with code/category/retryable/guidance', async () => {
+      const { queryNUT } = require('../lib/nutClient');
+      queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+        code: 'DATA-STALE', category: 'stale-data', retryable: true,
+        guidance: 'Check the driver status and USB connectivity.',
+      }));
+
+      const { status, body } = await post(port, '/ups-status');
+      expect(status).toBe(200);
+      expect(body.success).toBe(true);
+      const [entry] = body.data;
+      expect(entry._upsName).toBe('testups');
+      expect(entry._error).toBe('DATA-STALE');
+      expect(entry._errorCode).toBe('DATA-STALE');
+      expect(entry._errorCategory).toBe('stale-data');
+      expect(entry._retryable).toBe(true);
+      expect(entry._guidance).toBe('Check the driver status and USB connectivity.');
+    });
+
+    test('a plain Error rejection (e.g. connection refused) still surfaces _error with null structured fields', async () => {
+      const { queryNUT } = require('../lib/nutClient');
+      queryNUT.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+
+      const { body } = await post(port, '/ups-status');
+      const [entry] = body.data;
+      expect(entry._error).toBe('connect ECONNREFUSED');
+      expect(entry._errorCode).toBeNull();
+      expect(entry._errorCategory).toBeNull();
+      expect(entry._retryable).toBeNull();
+      expect(entry._guidance).toBeNull();
+    });
+
+    test('_lastKnownGood carries the most recent persisted telemetry point when a query fails', async () => {
+      // Seed history as if an earlier successful poll had already run.
+      const histFile = path.join(storageDir, 'ups-history-testups.json');
+      const buf = new RingBuffer(histFile, 100);
+      buf.push({ t: '2026-01-01T00:00:00.000Z', inV: 229, outV: 229, bat: 90, load: 30, runtime: 5000 });
+      buf.push({ t: '2026-01-01T00:01:00.000Z', inV: 230, outV: 230, bat: 88, load: 32, runtime: 4900 });
+
+      const { queryNUT } = require('../lib/nutClient');
+      queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+        code: 'DATA-STALE', category: 'stale-data', retryable: true,
+      }));
+
+      const { body } = await post(port, '/ups-status');
+      const [entry] = body.data;
+      expect(entry._lastKnownGood).toMatchObject({ t: '2026-01-01T00:01:00.000Z', bat: 88, load: 32 });
+    });
+
+    test('_lastKnownGood is null when no history has been recorded yet', async () => {
+      const { queryNUT } = require('../lib/nutClient');
+      queryNUT.mockRejectedValueOnce(Object.assign(new Error('UNKNOWN-UPS'), {
+        code: 'UNKNOWN-UPS', category: 'unknown-ups', retryable: false,
+      }));
+
+      const { body } = await post(port, '/ups-status');
+      expect(body.data[0]._lastKnownGood).toBeNull();
+    });
+
+    test('a successful query is unaffected — no error fields are present', async () => {
+      const { body } = await post(port, '/ups-status');
+      const [entry] = body.data;
+      expect(entry._error).toBeUndefined();
+      expect(entry._lastKnownGood).toBeUndefined();
+    });
+  });
+
   // ── POST /history ─────────────────────────────────────────────────────────
 
   test('POST /history returns empty points when no history file exists', async () => {

@@ -779,6 +779,20 @@ async function fetchHistory(upsName, opts = {}) {
 }
 
 // ── Main data fetch ────────────────────────────────────────────────────────────
+// Map a persisted history point ({t, inV, outV, bat, load, runtime}) back onto
+// the live-NUT-variable field names renderUPS() expects, so a "last known good"
+// reading can be rendered through the same code path as a live one.
+function pointToUpsFields(p) {
+  if (!p) return {};
+  return {
+    'input.voltage':   p.inV,
+    'output.voltage':  p.outV,
+    'battery.charge':  p.bat,
+    'ups.load':        p.load,
+    'battery.runtime': p.runtime,
+  };
+}
+
 async function fetchData() {
   document.getElementById('error-area').style.display = 'none';
   try {
@@ -789,7 +803,7 @@ async function fetchData() {
     renderTabs(allUPSData);
     const ups = allUPSData[activeUPSIdx];
     if (ups) {
-      if (ups._error) showError(`NUT error for ${ups._upsName}: ${ups._error}`);
+      if (ups._error) showUpsError(ups);
       else {
         renderUPS(ups);
         await fetchHistory(ups._upsName);
@@ -803,6 +817,33 @@ async function fetchData() {
     showError('Could not reach NUT server: ' + err.message);
     document.getElementById('status-banner').className = 'status-banner error';
     document.getElementById('status-text').textContent = 'Connection failed';
+  }
+}
+
+// Render a failed /ups-status entry for one UPS: the error banner (with
+// actionable guidance when the server provided any) plus, when a previous
+// successful reading is on record, that reading's metrics so the dashboard
+// keeps showing real numbers — clearly marked as stale — instead of going
+// blank (see issue #237).
+function showUpsError(ups) {
+  let msg = `NUT error for ${ups._upsName}: ${ups._error}`;
+  if (ups._guidance) msg += ` — ${ups._guidance}`;
+  showError(msg);
+
+  document.getElementById('status-banner').className = 'status-banner error';
+
+  if (ups._lastKnownGood) {
+    renderUPS({ ...pointToUpsFields(ups._lastKnownGood), _upsName: ups._upsName });
+    const staleSince = fmtDateTime(ups._lastKnownGood.t);
+    document.getElementById('status-text').textContent =
+      `${(ups._upsName || 'UPS').toUpperCase()} — Last known reading`;
+    document.getElementById('status-detail').textContent =
+      `Live data unavailable${ups._errorCode ? ` (${ups._errorCode})` : ''} — showing reading from ${staleSince}.`;
+  } else {
+    document.getElementById('status-text').textContent =
+      `${(ups._upsName || 'UPS').toUpperCase()} — No data available`;
+    document.getElementById('status-detail').textContent =
+      ups._errorCode ? `(${ups._errorCode})` : '';
   }
 }
 

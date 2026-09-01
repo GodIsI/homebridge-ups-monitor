@@ -358,7 +358,13 @@ class NUTDashboardPlatform {
           `runtime=${Math.round((data['battery.runtime'] || 0) / 60)}min`
         );
       } catch (err) {
-        this.log.error(`[${upsName}] NUT query failed: ${err.message}`);
+        // NUTQueryError (see lib/nutClient.js) already folds its NUT protocol
+        // error code into err.message; when it also has actionable guidance,
+        // append it so the log line is useful on its own, without requiring a
+        // trip to the dashboard. A plain Error (network failure, timeout) just
+        // logs its message as before.
+        const guidance = err.guidance ? ` — ${err.guidance}` : '';
+        this.log.error(`[${upsName}] NUT query failed: ${err.message}${guidance}`);
       }
     };
 

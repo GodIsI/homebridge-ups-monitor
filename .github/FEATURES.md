@@ -364,3 +364,23 @@ Suggested columns:
 - Browser-sanity check that the new export action disables/enables correctly.
 
 **Depends on:** Feature 11 outage timeline persistence and dashboard controls.
+
+## Feature 13 — NUT Error Diagnostics ✅ `agent/claude/surface-nut-errors`
+
+**Goal:** Stop `parseNUTResponse()` from silently discarding NUT protocol errors (`ERR DATA-STALE`, `ERR UNKNOWN-UPS`, `ERR ACCESS-DENIED`, …). Previously a failed query resolved as an empty data object, which both the poll loop and the dashboard misread as "unknown status" instead of a real failure — no indication a driver, USB link, UPS name, or credential problem needed attention (issue #237).
+
+**Delivered:**
+- `lib/nutParser.js`: `NUT_ERROR_CATALOG` classifies every NUT protocol error code into a category (`unsupported` / `stale-data` / `unknown-ups` / `auth` / `server`), a `retryable` flag, and human-readable guidance; `parseNUTErrors()` extracts structured `{ code, message, category, retryable, guidance }` objects from a raw response buffer. `VAR-NOT-SUPPORTED` and friends stay in the `unsupported` category and remain silent — polling an optional variable a UPS doesn't have is not a failure.
+- `lib/nutClient.js`: `queryNUT()` now rejects with a `NUTQueryError` (`code`, `category`, `retryable`, `guidance`, `upsName`) when a query returns any non-`unsupported` error, instead of silently resolving with a hollow object.
+- `index.js`: the poll loop's error log includes the guidance text when present, and — because `queryNUT()` now actually rejects for these cases — never pushes an all-null point into the ring buffer, daily log, or outage log for a failed poll (telemetry integrity).
+- `lib/dashboardServer.js` and `homebridge-ui/server.js`: a failed `/ups-status` query for one UPS now returns `_errorCode`, `_errorCategory`, `_retryable`, `_guidance`, and `_lastKnownGood` (the most recent persisted telemetry point, if any) alongside the existing `_error` message.
+- Dashboard UI (`homebridge-ui/public/dashboard.html`): shows the guidance text in the error banner and, when a last-known-good reading exists, keeps displaying those metrics — clearly marked as stale, with the reading's timestamp and the NUT error code — instead of going blank.
+
+### Tests
+
+- `parseNUTErrors()` classification for every catalogued code plus an unrecognised fallback.
+- `queryNUT()` rejects with the right `NUTQueryError` shape for `DATA-STALE`, `UNKNOWN-UPS`, and `ACCESS-DENIED`, and still resolves normally when only optional variables are unsupported; a recovery scenario (failed query followed by a healthy one).
+- Poll-loop tests: guidance text reaches the log, a failed poll writes to none of the three stores, and a subsequent successful poll writes a real (non-null) point.
+- Standalone dashboard server and Homebridge UI server tests cover the enriched `/ups-status` error payload and `_lastKnownGood` (present and absent cases).
+
+**Depends on:** Feature 2 ring-buffer history (source of `_lastKnownGood`), Feature 5 standalone dashboard server.
