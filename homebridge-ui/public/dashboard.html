@@ -744,7 +744,14 @@ function renderTabs(arr) {
       renderTabs(allUPSData);
       const ups = allUPSData[i];
       renderActiveUPS(ups);
-      if (ups && !ups._error) {
+      // History, charts and outages are keyed by upsName and read data that's
+      // independent of whether *this* live query just succeeded — they don't
+      // need a healthy ups._error state to render correctly, so they always
+      // run for the newly selected UPS. Gating them on !ups._error (like the
+      // live-metrics branch inside renderActiveUPS) would leave the
+      // previously active UPS's chart/outage panels on screen under the
+      // newly selected UPS's tab (see #241/#242 review finding 2).
+      if (ups && ups._upsName) {
         await fetchHistory(ups._upsName, { force: true });
         updateCharts(ups._upsName);
         renderOutages(ups._upsName);

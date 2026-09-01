@@ -41,6 +41,10 @@ const MOCK_DATA = {
  *   variable) gets `ERR <globalError>` instead of a value — simulates a
  *   driver-wide failure (DATA-STALE, UNKNOWN-UPS, ACCESS-DENIED, ...) rather
  *   than a single unsupported variable.
+ * @param {boolean} [opts.silentReply]  When set, every GET VAR is silently
+ *   ignored (no VAR or ERR line at all) — simulates a truncated/empty upsd
+ *   reply. LOGOUT still gets "OK Goodbye", matching a clean close with
+ *   nothing useful having been said.
  * @returns {Promise<net.Server>}
  */
 function createMockNUTServer(data = MOCK_DATA, opts = {}) {
@@ -73,7 +77,9 @@ function createMockNUTServer(data = MOCK_DATA, opts = {}) {
           const m = cmd.match(/^GET VAR (\S+) (\S+)/);
           if (m) {
             const [, upsName, varName] = m;
-            if (opts.globalError) {
+            if (opts.silentReply) {
+              // Deliberately answer nothing — simulates a truncated/empty reply.
+            } else if (opts.globalError) {
               socket.write(`ERR ${opts.globalError}\n`);
             } else if (data[varName] !== undefined) {
               socket.write(`VAR ${upsName} ${varName} "${data[varName]}"\n`);
@@ -266,6 +272,32 @@ describe('queryNUT — NUT protocol errors (mock server)', () => {
 
   test('rejects when the default NUT_VARS list is used against a driver that supports none of them', async () => {
     const { server, port } = await startMock({});
+    try {
+      await expect(
+        queryNUT('127.0.0.1', port, 'ups', null, null)
+      ).rejects.toThrow(NUTQueryError);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('rejects when upsd answers with no VAR or ERR lines at all (truncated/empty reply, #242 review finding 1)', async () => {
+    const { server, port } = await startMock(MOCK_DATA, { silentReply: true });
+    try {
+      const err = await queryNUT('127.0.0.1', port, 'ups', null, null, ['input.voltage', 'battery.charge']).catch(e => e);
+      expect(err).toBeInstanceOf(NUTQueryError);
+      expect(err.code).toBeNull();
+      expect(err.category).toBe('server');
+      expect(err.retryable).toBe(true);
+      expect(err.upsName).toBe('ups');
+      expect(err.message).toEqual(expect.stringContaining('ups'));
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('rejects on an empty reply even when the default NUT_VARS list is used', async () => {
+    const { server, port } = await startMock(MOCK_DATA, { silentReply: true });
     try {
       await expect(
         queryNUT('127.0.0.1', port, 'ups', null, null)
