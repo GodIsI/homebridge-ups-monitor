@@ -559,6 +559,121 @@ describe('POST /export-30d', () => {
   });
 });
 
+// ── POST /ups-status (issue #237: surface NUT errors with diagnostics) ────────
+
+describe('POST /ups-status — NUT protocol error handling', () => {
+  test('a successful query has no error fields', async () => {
+    const dir = tmpDir();
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockResolvedValueOnce({ 'ups.status': 'OL', 'battery.charge': 90 });
+
+    const resp = await ctx.handleUpsStatus();
+    expect(resp.success).toBe(true);
+    const [entry] = resp.data;
+    expect(entry._error).toBeUndefined();
+    expect(entry._lastKnownGood).toBeUndefined();
+
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('a NUTQueryError-shaped rejection is surfaced with code/category/retryable/guidance', async () => {
+    const dir = tmpDir();
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockRejectedValueOnce(Object.assign(new Error('UNKNOWN-UPS'), {
+      code: 'UNKNOWN-UPS', category: 'unknown-ups', retryable: false,
+      guidance: 'NUT UPS names are case-sensitive.',
+    }));
+
+    const resp = await ctx.handleUpsStatus();
+    const [entry] = resp.data;
+    expect(entry._upsName).toBe('ups');
+    expect(entry._error).toBe('UNKNOWN-UPS');
+    expect(entry._errorCode).toBe('UNKNOWN-UPS');
+    expect(entry._errorCategory).toBe('unknown-ups');
+    expect(entry._retryable).toBe(false);
+    expect(entry._guidance).toBe('NUT UPS names are case-sensitive.');
+
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('a plain Error rejection surfaces _error with null structured fields', async () => {
+    const dir = tmpDir();
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+
+    const resp = await ctx.handleUpsStatus();
+    const [entry] = resp.data;
+    expect(entry._error).toBe('connect ECONNREFUSED');
+    expect(entry._errorCode).toBeNull();
+    expect(entry._errorCategory).toBeNull();
+    expect(entry._retryable).toBeNull();
+    expect(entry._guidance).toBeNull();
+
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('_lastKnownGood carries the most recent persisted telemetry point when a query fails', async () => {
+    const dir = tmpDir();
+    populateRingBuffer(dir, 'ups', 3); // points 0, 1, 2 — point 2 is most recent
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+      code: 'DATA-STALE', category: 'stale-data', retryable: true,
+    }));
+
+    const resp = await ctx.handleUpsStatus();
+    const [entry] = resp.data;
+    // Compare everything but `t` exactly (makePoint() stamps it with
+    // Date.now() at call time, which can differ by a millisecond from when
+    // populateRingBuffer() generated the seeded point) and just check `t`
+    // is present as a string.
+    const expected = makePoint(2);
+    expect(entry._lastKnownGood).toMatchObject({
+      inV: expected.inV, outV: expected.outV, bat: expected.bat,
+      load: expected.load, runtime: expected.runtime,
+    });
+    expect(typeof entry._lastKnownGood.t).toBe('string');
+
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('_lastKnownGood skips a trailing all-null legacy point and returns the last usable reading (#241)', async () => {
+    const dir = tmpDir();
+    const buf = populateRingBuffer(dir, 'ups', 2); // points 0, 1 — point 1 is the newest usable one
+    // Pre-#238 all-null point, as a failed poll could still push before the telemetry-integrity fix.
+    buf.push({
+      t: new Date(Date.now() + 5 * 60000).toISOString(),
+      inV: null, outV: null, bat: null, load: null, runtime: null,
+    });
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+      code: 'DATA-STALE', category: 'stale-data', retryable: true,
+    }));
+
+    const resp = await ctx.handleUpsStatus();
+    const [entry] = resp.data;
+    const expected = makePoint(1);
+    expect(entry._lastKnownGood).toMatchObject({
+      inV: expected.inV, outV: expected.outV, bat: expected.bat,
+      load: expected.load, runtime: expected.runtime,
+    });
+
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  test('_lastKnownGood is null when no history has been recorded yet', async () => {
+    const dir = tmpDir();
+    const ctx = makeServerCtx(dir, 'ups');
+    require('../lib/nutClient').queryNUT.mockRejectedValueOnce(Object.assign(new Error('DATA-STALE'), {
+      code: 'DATA-STALE', category: 'stale-data', retryable: true,
+    }));
+
+    const resp = await ctx.handleUpsStatus();
+    expect(resp.data[0]._lastKnownGood).toBeNull();
+
+    fs.rmSync(dir, { recursive: true });
+  });
+});
+
 // ── Route registration ────────────────────────────────────────────────────────
 
 describe('route registration', () => {

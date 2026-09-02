@@ -742,11 +742,21 @@ function renderTabs(arr) {
     btn.onclick = async () => {
       activeUPSIdx = i;
       renderTabs(allUPSData);
-      renderUPS(allUPSData[i]);
-      await fetchHistory(allUPSData[i]._upsName, { force: true });
-      updateCharts(allUPSData[i]._upsName);
-      renderOutages(allUPSData[i]._upsName);
-      fetchOutages(allUPSData[i]._upsName);
+      const ups = allUPSData[i];
+      renderActiveUPS(ups);
+      // History, charts and outages are keyed by upsName and read data that's
+      // independent of whether *this* live query just succeeded — they don't
+      // need a healthy ups._error state to render correctly, so they always
+      // run for the newly selected UPS. Gating them on !ups._error (like the
+      // live-metrics branch inside renderActiveUPS) would leave the
+      // previously active UPS's chart/outage panels on screen under the
+      // newly selected UPS's tab (see #241/#242 review finding 2).
+      if (ups && ups._upsName) {
+        await fetchHistory(ups._upsName, { force: true });
+        updateCharts(ups._upsName);
+        renderOutages(ups._upsName);
+        fetchOutages(ups._upsName);
+      }
     };
     el.appendChild(btn);
   });
@@ -779,8 +789,21 @@ async function fetchHistory(upsName, opts = {}) {
 }
 
 // ── Main data fetch ────────────────────────────────────────────────────────────
+// Map a persisted history point ({t, inV, outV, bat, load, runtime}) back onto
+// the live-NUT-variable field names renderUPS() expects, so a "last known good"
+// reading can be rendered through the same code path as a live one.
+function pointToUpsFields(p) {
+  if (!p) return {};
+  return {
+    'input.voltage':   p.inV,
+    'output.voltage':  p.outV,
+    'battery.charge':  p.bat,
+    'ups.load':        p.load,
+    'battery.runtime': p.runtime,
+  };
+}
+
 async function fetchData() {
-  document.getElementById('error-area').style.display = 'none';
   try {
     const resp = await apiRequest('/ups-status');
     if (!resp.success) throw new Error(resp.error || 'Server error');
@@ -788,14 +811,11 @@ async function fetchData() {
     for (const ups of allUPSData) { if (!ups._error) appendLivePoint(ups._upsName, ups); }
     renderTabs(allUPSData);
     const ups = allUPSData[activeUPSIdx];
-    if (ups) {
-      if (ups._error) showError(`NUT error for ${ups._upsName}: ${ups._error}`);
-      else {
-        renderUPS(ups);
-        await fetchHistory(ups._upsName);
-        updateCharts(ups._upsName);
-        fetchOutages(ups._upsName);
-      }
+    renderActiveUPS(ups);
+    if (ups && !ups._error) {
+      await fetchHistory(ups._upsName);
+      updateCharts(ups._upsName);
+      fetchOutages(ups._upsName);
     }
     document.getElementById('last-updated').textContent =
       `Last updated: ${new Date().toLocaleTimeString()} — NUT at ${resp.host}:${resp.port}`;
@@ -803,6 +823,45 @@ async function fetchData() {
     showError('Could not reach NUT server: ' + err.message);
     document.getElementById('status-banner').className = 'status-banner error';
     document.getElementById('status-text').textContent = 'Connection failed';
+  }
+}
+
+// Render whichever UPS is currently active — the error banner + any
+// last-known-good metrics via showUpsError(), or plain live metrics via
+// renderUPS() — clearing any previous error banner first. Used by both
+// fetchData()'s periodic refresh and the tab-switch handler so the two
+// paths can't render an errored UPS differently (see issue #241).
+function renderActiveUPS(ups) {
+  document.getElementById('error-area').style.display = 'none';
+  if (!ups) return;
+  if (ups._error) showUpsError(ups);
+  else renderUPS(ups);
+}
+
+// Render a failed /ups-status entry for one UPS: the error banner (with
+// actionable guidance when the server provided any) plus, when a previous
+// successful reading is on record, that reading's metrics so the dashboard
+// keeps showing real numbers — clearly marked as stale — instead of going
+// blank (see issue #237).
+function showUpsError(ups) {
+  let msg = `NUT error for ${ups._upsName}: ${ups._error}`;
+  if (ups._guidance) msg += ` — ${ups._guidance}`;
+  showError(msg);
+
+  document.getElementById('status-banner').className = 'status-banner error';
+
+  if (ups._lastKnownGood) {
+    renderUPS({ ...pointToUpsFields(ups._lastKnownGood), _upsName: ups._upsName });
+    const staleSince = fmtDateTime(ups._lastKnownGood.t);
+    document.getElementById('status-text').textContent =
+      `${(ups._upsName || 'UPS').toUpperCase()} — Last known reading`;
+    document.getElementById('status-detail').textContent =
+      `Live data unavailable${ups._errorCode ? ` (${ups._errorCode})` : ''} — showing reading from ${staleSince}.`;
+  } else {
+    document.getElementById('status-text').textContent =
+      `${(ups._upsName || 'UPS').toUpperCase()} — No data available`;
+    document.getElementById('status-detail').textContent =
+      ups._errorCode ? `(${ups._errorCode})` : '';
   }
 }
 

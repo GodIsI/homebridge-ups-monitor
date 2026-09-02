@@ -62,17 +62,17 @@ class NUTUiServer extends HomebridgePluginUiServer {
       const password = cfg.password || null;
       const upsList  = Array.isArray(cfg.ups) ? cfg.ups : [cfg.ups || 'ups'];
 
+      const dataDir = resolveDataDir(storagePath);
+
       const results = await Promise.allSettled(
         upsList.map(upsName => queryNUT(host, port, upsName, username, password)
           .then(data => ({ _upsName: upsName, ...data }))
         )
       );
 
-      const data = results.map((r, i) =>
-        r.status === 'fulfilled'
-          ? r.value
-          : { _upsName: upsList[i], _error: r.reason?.message || 'Unknown error' }
-      );
+      const data = results.map((r, i) => r.status === 'fulfilled'
+        ? r.value
+        : this._errorPayload(dataDir, upsList[i], r.reason));
 
       return {
         success:   true,
@@ -87,6 +87,34 @@ class NUTUiServer extends HomebridgePluginUiServer {
   }
 
   // ── Shared helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Build the per-UPS error payload for a failed /ups-status query. Folds in
+   * whatever structure a NUTQueryError (lib/nutClient.js) carries — code,
+   * category, retryable, guidance — so the dashboard can show more than a raw
+   * message, and attaches the last successful telemetry point (if any) so the
+   * UI can keep showing a real reading, marked as stale, instead of going blank.
+   */
+  _errorPayload(dataDir, upsName, reason) {
+    return {
+      _upsName:        upsName,
+      _error:          reason?.message || 'Unknown error',
+      _errorCode:      reason?.code || null,
+      _errorCategory:  reason?.category || null,
+      _retryable:      typeof reason?.retryable === 'boolean' ? reason.retryable : null,
+      _guidance:       reason?.guidance || null,
+      _lastKnownGood:  this._lastKnownGoodFor(dataDir, upsName),
+    };
+  }
+
+  /**
+   * Most recent persisted telemetry point for a UPS that actually carries a
+   * reading (see telemetryStore.lastKnownGood for why "last written" isn't
+   * good enough), or null if none exists.
+   */
+  _lastKnownGoodFor(dataDir, upsName) {
+    return telemetryStore.lastKnownGood(dataDir, upsName);
+  }
 
   /**
    * Resolve storagePath, dataDir and upsName from the request body, falling back
