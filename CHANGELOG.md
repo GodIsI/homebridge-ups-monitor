@@ -1,4 +1,4 @@
-## [1.18.4](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.3-beta.405...v1.18.4) (2026-09-02)
+## [1.19.0](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.4-beta.408...v1.19.0) (2026-09-02)
 
 ### Bug Fixes
 
@@ -7,7 +7,7 @@
 * make dashboardScript.js's <script> extraction regex case-insensitive ([fca6837](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/fca6837999c11aff39be8293460b73c0234ddf80))
 * surface NUT protocol errors with actionable diagnostics ([32c6773](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/commit/32c6773fef7a9f9dc5ff53ade58acfce6be313e1)), closes [#237](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/issues/237)
 
-## [1.18.3-beta.405](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.2-beta.400...v1.18.3-beta.405) (2026-08-16)
+## [1.18.4-beta.408](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.3-beta.405...v1.18.4-beta.408) (2026-08-16)
 
 ## [1.17.1-beta.389](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.17.0...v1.17.1-beta.389) (2026-08-16)
 
