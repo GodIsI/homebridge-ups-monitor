@@ -65,6 +65,22 @@ version-bump PR.
 GitHub release body. They do not use GitHub's auto-generated release notes,
 because those can include older compare ranges and automated version-bump noise.
 
+## Re-running `release.yml` against an already-released version
+
+`release.yml` uses `softprops/action-gh-release@v3`, which **updates** the
+existing GitHub Release for a tag if one already exists — it does not fail.
+So a manual re-run of the workflow after a partial failure (e.g. `publish.yml`
+failing after the release step already succeeded) will silently edit the
+existing release rather than error out.
+
+The release tag itself is protected by the org `protect-releases` ruleset
+(deletion and update blocked, no bypass), so retrying the same job against an
+existing tag is not a safe recovery path even if you wanted to force it.
+
+**Recovery:** don't retry the same release job. Cut a fresh version bump
+(patch or minor, per the rules above) so CI creates a new tag and release from
+scratch.
+
 ## Resolving a `develop → main` version conflict (if it ever recurs)
 
 1. Merge `main` into `develop` via an `agent/*` PR, resolving `package.json` to
