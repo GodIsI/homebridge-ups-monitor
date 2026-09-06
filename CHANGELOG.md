@@ -1,3 +1,5 @@
+## [1.19.1](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.19.0...v1.19.1) (2026-09-06)
+
 ## [1.19.0](https://github.com/Plimmerton-Labs/homebridge-ups-monitor/compare/v1.18.4-beta.408...v1.19.0) (2026-09-02)
 
 ### Bug Fixes
