@@ -65,6 +65,32 @@ version-bump PR.
 GitHub release body. They do not use GitHub's auto-generated release notes,
 because those can include older compare ranges and automated version-bump noise.
 
+## Re-running `release.yml` or `publish.yml` after a partial failure
+
+`release.yml` uses `softprops/action-gh-release@v3`. If the `v*` tag already
+exists, the action does **not** move or recreate that tag — `target_commitish`
+only applies when the tag is first created. It updates the existing GitHub
+Release in place instead (name, body, and assets are overwritten; assets
+default to `overwrite_files: true`). The tag itself is separately protected by
+the org `protect-releases` ruleset (deletion and update blocked, no bypass),
+but that protection is about the git ref, not about whether the release object
+can be refreshed — the two are independent.
+
+Recovery therefore depends on which step actually failed:
+
+- **`release.yml` failed before or during the GitHub Release step:** safe to
+  re-run. The tag is unchanged and protected; the action reuses it and
+  updates the release/assets idempotently.
+- **`publish.yml` (npm) failed:** don't blindly re-run. Check npm first — npm
+  versions are immutable, and a timeout or interrupted response can leave the
+  actual publish outcome uncertain. If the version is confirmed *not*
+  published, re-running `publish.yml` for the same commit/version is fine.
+- **Source or release content needs to change:** don't hand-edit
+  `package.json` or the tag — use the normal automated version-bump flow
+  (`version-patch.yml`/`version-minor.yml`) to cut a fresh version instead.
+- **Never** delete, recreate, or force-move the protected release tag as a
+  recovery step.
+
 ## Resolving a `develop → main` version conflict (if it ever recurs)
 
 1. Merge `main` into `develop` via an `agent/*` PR, resolving `package.json` to
